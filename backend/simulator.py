@@ -87,13 +87,12 @@ def read_all_registers_and_write_to_list(cpu_emulator):
 
 
 
-execution_limit = 100
 def record_register_states(cpu_emulator, register_states, byte_code, executed_addresses):
     instruction_number = []
     instruction_number.append(None)
     counter = 0
     # Limit to avoid infinite loops
-    execution_limit = 100
+    execution_limit = 10_000
     starting_address = 0x1000
     PC = 0x1000
     cpu_emulator.reg_write(reg.UC_ARM64_REG_PC, PC)
@@ -112,22 +111,25 @@ def record_register_states(cpu_emulator, register_states, byte_code, executed_ad
 
 
 
+def main():
+    assem = """mov x1, #3
+    mov x2, #0
+    loop:
+        add x2, x2, x1
+        subs x1, x1, #1
+        b.ne loop
+    cmp x2, #6
+    b.ne else_case
+    mov x3, #100
+    b end_if
+    else_case:
+        mov x3, #200
+    end_if:
+        add x4, x3, #7
+    """
+    #print(convert_assembly_to_byte(assem))
+    print(run_byte_code(convert_assembly_to_byte(assem)))
 
+if __name__ == '__main__':
+    main()
 
-assem = """mov x1, #3
-mov x2, #0
-loop:
-    add x2, x2, x1
-    subs x1, x1, #1
-    b.ne loop
-cmp x2, #6
-b.ne else_case
-mov x3, #100
-b end_if
-else_case:
-    mov x3, #200
-end_if:
-    add x4, x3, #7
-"""
-#print(convert_assembly_to_byte(assem))
-print(run_byte_code(convert_assembly_to_byte(assem)))

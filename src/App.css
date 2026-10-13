@@ -69,7 +69,10 @@
   gap: 8px;
   justify-content: center;
   margin-bottom: 12px;
+  align-items: center;
 }
+
+
 
 .execution-controls button {
   padding: 8px 12px;
@@ -191,4 +194,22 @@
 
 .memory-panel {
   padding: 12px;
+}
+
+.register-changed td {
+  font-weight: bold;
+  background-color: lightgray;
+}
+
+.nzcv-flags {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+}
+
+.nzcv-flags span {
+  border: 1px solid lightgray;
+  padding: 3px;
+  text-align: center;
+  white-space: nowrap;
 }
