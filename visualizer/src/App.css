@@ -1,0 +1,194 @@
+.assembly-visualizer {
+  height: 100dvh;
+  width: 100%;
+}
+.workspace {
+  display: grid;
+  grid-template-columns: 2.8fr 2.8fr 2fr;
+  gap: 16px;
+}
+
+.code-editor {
+  border: 1px solid lightgray;
+  padding: 12px;
+  border-radius: 3px;
+}
+
+.register-panel {
+  border: 1px solid lightgray;
+  border-radius: 3px;
+  padding: 12px;
+}
+
+.memory-panel {
+  border: 1px solid lightgray;
+  border-radius: 3px;
+  padding: 3px;
+}
+
+.code-editor textarea {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.assembly-input {
+  height: 250px;
+}
+
+.register-tables {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.next-instruction {
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  text-align: left;
+  border: 1px solid lightgray;
+  border-radius: 3px;
+  padding: 2px;
+}
+.next-instruction h5{
+  margin: 0;
+}
+
+.stdout {
+  border: 1px solid lightgray;
+  padding: 8px;
+}
+
+.stdout, .assembly-input, .stdin {
+  font-family: monospace;
+}
+
+.execution-controls {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  margin-bottom: 12px;
+}
+
+.execution-controls button {
+  padding: 8px 12px;
+  cursor: pointer;
+}
+
+.input-output {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.stdin, .stdout {
+  border: 1px solid lightgray;
+  padding: 8px;
+  border-radius: 3px;
+  text-align: left;
+}
+
+.stdin h5, .stdout h5 {
+  margin: 0 0 8px;
+}
+
+.stdout pre {
+  margin: 0;
+  font-family: monospace;
+}
+
+.code-editor h4 {
+  margin: 0 0 8px;
+  text-align: left;
+}
+
+.register-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.register-options {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.register-header h5 {
+  margin: 0;
+}
+
+.register-tables table {
+  table-layout: fixed;
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0 6px;
+}
+
+.register-tables td {
+  text-align: left;
+  font-family: monospace;
+  padding: 3px 6px;
+  border: 1px solid lightgray;
+}
+
+.register-tables td:first-child {
+  width: 35px;
+  font-size: 13px;
+  font-family: monospace;
+}
+
+.register-tables td:last-child {
+  font-size: 15px;
+}
+
+.memory-columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.stack-bar, .heap-bar {
+  height: 350px;
+  display: flex;
+  border: 1px solid lightgray;
+  flex-direction: column;
+}
+
+.stack-bar {
+  justify-content: flex-start;
+}
+
+.heap-bar {
+  justify-content: flex-end;
+}
+
+.memory-cell {
+  border: 1px solid lightgray;
+  padding: 6px;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.memory-cell span {
+  font-size: 13px;
+  font-family: monospace;
+}
+
+.memory-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.memory-header h5 {
+  margin: 0;
+}
+
+.memory-panel {
+  padding: 12px;
+}
