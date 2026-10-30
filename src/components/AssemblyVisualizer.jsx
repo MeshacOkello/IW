@@ -86,7 +86,7 @@ mul x5, x3, x2`);
                     <RegisterPanel registerValues = {history?.register_states[stepIndex]} previousRegisterValues={stepIndex > 0 ? history.register_states[stepIndex - 1] : null}/>
                 </div>
                 <div className="memory-panel">
-                    <MemoryPanel/>
+                    <MemoryPanel stackValues = {history?.stack_states[stepIndex]} stackPointer={history?.register_states[stepIndex][31]}/>
                 </div>
             </div>
         </div>

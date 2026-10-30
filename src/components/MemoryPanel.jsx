@@ -1,7 +1,7 @@
 import Stack from "./Stack";
 import Heap from "./Heap";
 
-export default function MemoryPanel() {
+export default function MemoryPanel({stackValues, stackPointer}) {
     return(
         <div>
             <div className="memory-header">
@@ -14,7 +14,7 @@ export default function MemoryPanel() {
                 </div>
             </div>
             <div className="memory-columns">
-                <Stack/>
+                <Stack stackValues={stackValues} stackPointer={stackPointer}/>
                 <Heap/>
             </div>
         </div>

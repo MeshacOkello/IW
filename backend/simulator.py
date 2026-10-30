@@ -66,14 +66,27 @@ def run_byte_code(byte_code):
     # Put the byte code into the memory allocated
     cpu_emulator.mem_write(0x1000, byte_code)
 
+    # Allocate memory for stack
+    cpu_emulator.mem_map(0x8000, 4096)
+    cpu_emulator.reg_write(reg.UC_ARM64_REG_SP, 0x9000)
+
     # A snapshot list to store lists of snapshots, ie the ith list
     # holds the register state at the ith executed instruction
 
     register_states = [] # Each element is a list of size 34
     executed_addresses = [] # List showing which instruction was executed to produce register_states at i
     return record_register_states(cpu_emulator, register_states, byte_code, executed_addresses)
-    
-    
+
+# Get values in stack    
+def read_stack(cpu_emulator):
+    stack_snapshot = []
+    # loop from 0x8000 to 0x9000, in steps of 8 bytes
+    for address in range(32768, 36864, 8):
+        # read 8 bytes
+        stack_snapshot.append(int.from_bytes((cpu_emulator.mem_read(address, 8)), byteorder="little"))
+
+    return stack_snapshot
+
 
 def read_all_registers_and_write_to_list(cpu_emulator):
     regs = []
@@ -89,6 +102,7 @@ def read_all_registers_and_write_to_list(cpu_emulator):
 
 def record_register_states(cpu_emulator, register_states, byte_code, executed_addresses):
     instruction_number = []
+    stack_states = []
     instruction_number.append(None)
     counter = 0
     # Limit to avoid infinite loops
@@ -97,17 +111,19 @@ def record_register_states(cpu_emulator, register_states, byte_code, executed_ad
     PC = 0x1000
     cpu_emulator.reg_write(reg.UC_ARM64_REG_PC, PC)
     register_states.append(read_all_registers_and_write_to_list(cpu_emulator))
+    stack_states.append(read_stack(cpu_emulator))
     executed_addresses.append(None)
 
     while counter < execution_limit and PC < 0x1000 + len(byte_code):
         cpu_emulator.emu_start(PC, 0x1000 + len(byte_code), count=1)
         register_states.append(read_all_registers_and_write_to_list(cpu_emulator))
+        stack_states.append(read_stack(cpu_emulator))
         executed_addresses.append(PC)
         PC = cpu_emulator.reg_read(reg.UC_ARM64_REG_PC)
         counter += 1
         instruction_number.append((executed_addresses[counter] - starting_address)//4+1)
 
-    return (register_states, executed_addresses, instruction_number)   
+    return (register_states, stack_states, executed_addresses, instruction_number)   
 
 
 
