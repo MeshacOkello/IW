@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-export default function RegisterPanel({registerValues, previousRegisterValues}) {
+export default function RegisterPanel({registerValues, previousRegisterValues, memoryFormat = "hex",}) {
 
     if (registerValues == null) {
         registerValues = Array(34).fill(0);
@@ -8,14 +8,10 @@ export default function RegisterPanel({registerValues, previousRegisterValues}) 
 
     const [numberFormat, setNumberFormat] = useState('dec');
     
-    function formatValue(value) {
-        if (numberFormat == 'hex') {
-            value = "0x" + value.toString(16)
-        }
-        else {
-            value = value.toString(10);
-        }
-        return value;
+    function formatValue(value, format = numberFormat) {
+        return format === "hex"
+            ? "0x" + value.toString(16)
+            : value.toString(10);
     }
 
     function handleNumberFormatChange(event) {
@@ -177,7 +173,7 @@ export default function RegisterPanel({registerValues, previousRegisterValues}) 
                     </tr>
                     <tr className={previousRegisterValues && registerValues[31] !== previousRegisterValues[31] ? "register-changed" : ""}>
                         <td>sp</td>
-                        <td>{formatValue(registerValues[31])}</td>
+                        <td>{formatValue(registerValues[31], memoryFormat)}</td>
                     </tr>
                     <tr className={previousRegisterValues && registerValues[32] !== previousRegisterValues[32] ? "register-changed" : ""}>
                         <td>pc</td>
