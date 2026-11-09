@@ -442,3 +442,7 @@ body {
   font-weight: 1000;
   color: #333;
 }
+.stack-frame .memory-cell.memory-written {
+  background-color: lightgray;
+  font-weight: bold;
+}

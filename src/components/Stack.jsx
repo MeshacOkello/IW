@@ -5,6 +5,7 @@ export default function Stack({
     frameValues,
     memoryFormat = "hex",
     stackPointer,
+    memoryAccesses = [],
 }) {
     const cells = stackValues ?? [];
     const allFrames = frameValues ?? [];
@@ -23,6 +24,14 @@ export default function Stack({
             ? "0x" + address.toString(16)
             : address.toString(10);
     }
+    function wasWritten(cell) {
+    return memoryAccesses.some(
+        (access) =>
+            access.kind === "write" &&
+            access.address < cell.address + cell.size &&
+            cell.address < access.address + access.size
+    );
+}
 
     return (
         <div className="stack-section">
@@ -37,10 +46,9 @@ export default function Stack({
                 {frames.map((frame) => {
                     const size = frame.stack_end - frame.stack_start;
                     const hue = (frame.id * 137.508) % 360;
-                    const label =
-    frame.depth === 0
-        ? frame.name
-        : `${frame.name} (${frame.depth})`;
+                    const label = frame.depth === 0
+                                    ? frame.name
+                                    : `${frame.name} #${frame.depth}`;
 
                     const frameCells = cells.filter(
                         (cell) =>
@@ -82,7 +90,7 @@ export default function Stack({
                             >
                                 {frameCells.map((cell) => (
                                     <div
-                                        className="memory-cell"
+                                        className={`memory-cell${wasWritten(cell) ? " memory-written" : ""}`}
                                         key={cell.address}
                                         style={{
                                             height:

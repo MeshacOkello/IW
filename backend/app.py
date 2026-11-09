@@ -51,6 +51,7 @@ def simulate():
         'executed_lines': executed_lines,
         'explanations': explanations,
         'frame_states': frame_states,
+        'memory_accesses': memory_accesses,
     }
 
     return jsonify(response)

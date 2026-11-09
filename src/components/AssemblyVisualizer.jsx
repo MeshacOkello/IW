@@ -106,6 +106,7 @@ mul x5, x3, x2`);
                     memoryFormat={memoryFormat}
                     setMemoryFormat={setMemoryFormat}
                     stackPointer={history?.register_states?.[stepIndex]?.[31]}
+                    memoryAccesses={history?.memory_accesses?.[stepIndex]}
                 />                </div>
             </div>
         </div>

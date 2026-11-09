@@ -7,6 +7,7 @@ export default function MemoryPanel({
     memoryFormat,
     setMemoryFormat,
     stackPointer,
+    memoryAccesses,
 }) {
     return (
         <div>
@@ -32,6 +33,7 @@ export default function MemoryPanel({
                     frameValues={frameValues}
                     memoryFormat={memoryFormat}
                     stackPointer={stackPointer}
+                    memoryAccesses={memoryAccesses}
                 />
                 <Heap />
             </div>
