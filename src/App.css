@@ -328,39 +328,13 @@ body {
   justify-content: flex-start;
 }
 
-.stack-bar > .stack-frame:first-child {
+.stack-bar > .memory-frame:first-child {
   margin-top: auto;
-}
-
-.heap-bar {
-  justify-content: flex-start;
 }
 
 .heap-empty {
   margin: 8px;
   font-size: 13px;
-}
-
-.heap-allocation {
-  flex-shrink: 0;
-  border-bottom: 1px solid lightgray;
-}
-
-.heap-allocation .memory-cell {
-  border: 0;
-  background: #f2f4f7;
-}
-
-.heap-contents {
-  padding: 0 6px 6px;
-  font: 13px monospace;
-  line-height: 1.5;
-}
-
-.heap-written {
-  color: #372d12;
-  background: #ffe49a;
-  font-weight: bold;
 }
 
 .stack-labels {
@@ -391,17 +365,17 @@ body {
   white-space: nowrap;
 }
 
-/* Heights come from the cell's byte size in Stack.jsx. */
+/* Heights come from the cell's byte size in MemoryFrame.jsx. */
 
-.stack-bar .memory-cell {
+.memory-frame .memory-cell {
   padding-block: 0;
   overflow: hidden;
   line-height: 16px;
 }
 
-/* Function frames */
+/* Stack frames and heap allocations */
 
-.stack-frame {
+.memory-frame {
   box-sizing: border-box;
   display: block;
   flex: 0 0 auto;
@@ -449,7 +423,7 @@ body {
   min-width: 0;
 }
 
-.stack-frame .memory-cell {
+.memory-frame .memory-cell {
   width: 100%;
   color: var(--text, #333);
 }
@@ -460,12 +434,12 @@ body {
   gap: 4px;
 }
 
-.stack-frame .memory-cell .sp-marker {
+.memory-frame .memory-cell .sp-marker {
   font-size: 10px;
   font-weight: 1000;
   color: #333;
 }
-.stack-frame .memory-cell.memory-written {
+.memory-frame .memory-cell.memory-written {
   background-color: lightgray;
   font-weight: bold;
 }

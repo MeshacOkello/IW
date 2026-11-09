@@ -1,26 +1,46 @@
-function formatContents(allocation, writes, memoryFormat) {
-    const groups = [];
-    for (let offset = 0; offset < allocation.size; offset++) {
-        const address = allocation.address + offset;
-        const written = writes.some(({ address: start, size }) => start <= address && address < start + size);
-        const hex = allocation.contents.slice(offset * 2, offset * 2 + 2);
-        const byte = memoryFormat === "dec" && hex !== "??"
-            ? String(parseInt(hex, 16)).padStart(3, "0")
-            : hex;
-        const previous = groups[groups.length - 1];
-        if (previous?.written === written) {
-            previous.text += " " + byte;
-        } else {
-            groups.push({ offset, written, text: byte });
-        }
+import MemoryFrame from "./MemoryFrame";
+
+const SLOT_BYTES = 8;
+
+function memoryCells(allocation, writes, memoryFormat) {
+    const { address, size, contents } = allocation;
+    const writtenBytes = new Uint8Array(size);
+    for (const write of writes) {
+        const start = Math.max(0, write.address - address);
+        const end = Math.min(size, write.address + write.size - address);
+        if (start < end) writtenBytes.fill(1, start, end);
     }
 
-    return groups.map(({ offset, written, text }) => (
-        <span key={offset}>
-            {offset > 0 && " "}
-            {written ? <mark className="heap-written">{text}</mark> : text}
-        </span>
-    ));
+    const byteAt = (offset) => contents.slice(offset * 2, offset * 2 + 2);
+    const cells = [];
+    let offset = 0;
+    while (offset < size) {
+        const start = offset;
+        const cellAddress = address + start;
+        const initialized = byteAt(start) !== "??";
+        const written = writtenBytes[start];
+        const slotEnd = Math.min(size, start + SLOT_BYTES - (cellAddress % SLOT_BYTES));
+
+        // Split at slot boundaries, gaps in initialization, and write edges.
+        // A partial write then highlights only the bytes it touched.
+        let littleEndianHex = "";
+        while (
+            offset < slotEnd &&
+            (byteAt(offset) !== "??") === initialized &&
+            writtenBytes[offset] === written
+        ) {
+            if (initialized) littleEndianHex = byteAt(offset) + littleEndianHex;
+            offset++;
+        }
+        const value = initialized ? "0x" + littleEndianHex : null;
+        cells.push({
+            address: cellAddress,
+            size: offset - start,
+            value: value !== null && memoryFormat === "dec" ? BigInt(value).toString() : value,
+            written: Boolean(written),
+        });
+    }
+    return cells;
 }
 
 export default function Heap({ allocations = [], memoryFormat = "hex", memoryAccesses = [] }) {
@@ -31,22 +51,27 @@ export default function Heap({ allocations = [], memoryFormat = "hex", memoryAcc
 
             <div className="stack-labels">
                 <span>Address</span>
-                <span>Size</span>
+                <span>Value</span>
             </div>
 
-            <div className="heap-bar" title="?? means the program has not written this byte">
+            <div className="heap-bar">
                 {allocations.length === 0 && <p className="heap-empty">No active allocations</p>}
-                {allocations.map((allocation) => (
-                    <div className="heap-allocation" key={allocation.address}>
-                        <div className="memory-cell">
-                            <span>{memoryFormat === "dec" ? allocation.address : "0x" + allocation.address.toString(16)}</span>
-                            <span>{allocation.size} B</span>
-                        </div>
-                        <div className="heap-contents">
-                            {formatContents(allocation, writes, memoryFormat)}
-                        </div>
-                    </div>
-                ))}
+                {allocations.map((allocation) => {
+                    const address = memoryFormat === "hex"
+                        ? "0x" + allocation.address.toString(16)
+                        : allocation.address.toString(10);
+                    return (
+                        <MemoryFrame
+                            key={allocation.address}
+                            label={address}
+                            title={address}
+                            size={allocation.size}
+                            colorIndex={allocation.address}
+                            cells={memoryCells(allocation, writes, memoryFormat)}
+                            memoryFormat={memoryFormat}
+                        />
+                    );
+                })}
             </div>
         </div>
     );
