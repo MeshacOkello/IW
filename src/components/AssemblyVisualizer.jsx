@@ -13,6 +13,7 @@ sub x4, x1, x2
 mul x5, x3, x2`);
 
     const [history, setHistory] = useState(null);
+    const [loadError, setLoadError] = useState(null);
     const [stepIndex, setStepIndex] = useState(0);
     const [isRunning, setIsRunning] = useState(false);
     const [memoryFormat, setMemoryFormat] = useState("hex");
@@ -24,7 +25,8 @@ mul x5, x3, x2`);
     }
 
     async function handleLoad() {
-        setIsRunning(false)
+        setIsRunning(false);
+        setLoadError(null);
 
         // Send assembly code to Flask server
         const response = await fetch('/simulate', {
@@ -34,7 +36,12 @@ mul x5, x3, x2`);
         });
 
         const data = await response.json();
-        console.log(data);
+        if (!response.ok) {
+            setHistory(null);
+            setStepIndex(0);
+            setLoadError(data.error);
+            return;
+        }
 
         setHistory(data);
         setStepIndex(0);
@@ -79,6 +86,7 @@ mul x5, x3, x2`);
                 <div className="code-panel">
                     <ExecutionControls onLoad={handleLoad} onNext = {handleNext} onBack={handleBack} onReset={handleReset} currentStep={stepIndex} totalSteps={history ? history.register_states.length - 1 : 0} onRun={handleRun} isRunning = {isRunning}/>
 
+                    {loadError && <p role="alert">{loadError}</p>}
                     <CodeEditor
                         assemblyCode={assemblyCode}
                         setAssemblyCode={setAssemblyCode}

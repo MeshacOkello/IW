@@ -1,20 +1,10 @@
-from keystone import Ks, KS_ARCH_ARM64, KS_MODE_LITTLE_ENDIAN 
-from unicorn import Uc, UC_ARCH_ARM64, UC_MODE_ARM, UC_HOOK_MEM_WRITE, UC_HOOK_MEM_READ, UC_MEM_WRITE
+from unicorn import (
+    Uc, UcError, UC_ARCH_ARM64, UC_MODE_ARM, UC_HOOK_MEM_WRITE, UC_HOOK_MEM_READ,
+    UC_ERR_FETCH_PROT, UC_ERR_FETCH_UNMAPPED, UC_MEM_WRITE, UC_PROT_READ, UC_PROT_WRITE, UC_PROT_EXEC,
+)
 import unicorn.arm64_const as reg
 
-# Keystone:  An assembler, produces machine code from assembly
-# Unicorn: A CPU emulator, provides a simulated AArch64 CPU with registers and memory
-
-
-
-
-# Convert assembly code to bytes using Keystone
-def convert_assembly_to_byte(assembly_code):
-    # Create Keystone assembler
-    assembler = Ks(KS_ARCH_ARM64, KS_MODE_LITTLE_ENDIAN)
-    byte_code, statement_count = assembler.asm(assembly_code)
-
-    return bytes(byte_code)
+from assembler import STACK_START, STACK_END, TEXT_START, assemble_program, page_size
 
 # Dictionary that maps register name to its Unicorn register identifier (just for simplicity)
 registers = {
@@ -56,37 +46,31 @@ registers = {
 }
 
 
-def run_byte_code(byte_code, address_to_labels=None):
-    if address_to_labels is None:
-        address_to_labels = {}
-
-    # Create CPU emulator
-    cpu_emulator = Uc(UC_ARCH_ARM64, UC_MODE_ARM)
+def run_program(program):
     cpu_emulator = Uc(UC_ARCH_ARM64, UC_MODE_ARM)
     cpu_emulator.reg_write(reg.UC_ARM64_REG_NZCV, 0)
 
-    # Allocate memory for instructions
-    cpu_emulator.mem_map(0x1000, 4096)
-    cpu_emulator.mem_write(0x1000, byte_code)
+    permissions = {
+        '.text': UC_PROT_READ | UC_PROT_EXEC,
+        '.data': UC_PROT_READ | UC_PROT_WRITE,
+        '.rodata': UC_PROT_READ,
+        '.bss': UC_PROT_READ | UC_PROT_WRITE,
+    }
+    for section in program.sections:
+        if section.size:
+            cpu_emulator.mem_map(section.address, page_size(section.size), permissions[section.name])
+            if section.data:
+                cpu_emulator.mem_write(section.address, section.data)
 
-    # Allocate stack memory and initialize SP
-    cpu_emulator.mem_map(0x8000, 4096)
-    cpu_emulator.reg_write(reg.UC_ARM64_REG_SP, 0x9000)
+    cpu_emulator.mem_map(STACK_START, STACK_END - STACK_START, UC_PROT_READ | UC_PROT_WRITE)
+    cpu_emulator.reg_write(reg.UC_ARM64_REG_SP, STACK_END)
 
-    register_states = []
-    executed_addresses = []
+    address_to_labels = {}
+    for label, address in program.symbols.items():
+        if address in program.instructions:
+            address_to_labels.setdefault(address, []).append(label)
+    return record_register_states(cpu_emulator, program.instructions, address_to_labels)
 
-    return record_register_states(
-        cpu_emulator,
-        register_states,
-        byte_code,
-        executed_addresses,
-        address_to_labels,
-    )
-
-# Stack memory mapped in run_byte_code: [STACK_START, STACK_END)
-STACK_START = 0x8000
-STACK_END = 0x9000
 
 # The stack is tracked as a sorted list of non-overlapping cells
 # {'address', 'size', 'written'}. A blank cell (written == False) is
@@ -228,11 +212,11 @@ def read_all_registers_and_write_to_list(cpu_emulator):
 
 def record_register_states(
     cpu_emulator,
-    register_states,
-    byte_code,
-    executed_addresses,
+    instructions,
     address_to_labels,
 ):
+    register_states = []
+    executed_addresses = []
     instruction_number = [None]
     stack_states = []
     stack_cells = []
@@ -264,9 +248,9 @@ def record_register_states(
 
     counter = 0
     execution_limit = 10_000
-    starting_address = 0x1000
-    stopping_address = starting_address + len(byte_code)
-    PC = starting_address
+    instruction_indices = {pc: index for index, pc in enumerate(sorted(instructions), start=1)}
+    PC = next(iter(instruction_indices), TEXT_START)
+    stopping_address = max(instructions, default=TEXT_START) + 4
 
     cpu_emulator.reg_write(reg.UC_ARM64_REG_PC, PC)
     initial_sp = cpu_emulator.reg_read(reg.UC_ARM64_REG_SP)
@@ -312,7 +296,7 @@ def record_register_states(
 
     while (
         counter < execution_limit
-        and starting_address <= PC < stopping_address
+        and PC in instructions
     ):
         old_sp = cpu_emulator.reg_read(reg.UC_ARM64_REG_SP)
 
@@ -329,11 +313,15 @@ def record_register_states(
         stack_writes.clear()
         step_accesses.clear()
 
-        cpu_emulator.emu_start(
-            PC,
-            stopping_address,
-            count=1,
-        )
+        try:
+            cpu_emulator.emu_start(PC, stopping_address, count=1)
+        except UcError as error:
+            # Unicorn may try to fetch the branch destination before it
+            # returns from a single step. Record the branch, then let the
+            # instruction map stop execution at the destination.
+            target = cpu_emulator.reg_read(reg.UC_ARM64_REG_PC)
+            if error.errno not in (UC_ERR_FETCH_PROT, UC_ERR_FETCH_UNMAPPED) or target in instructions:
+                raise
 
         new_sp = cpu_emulator.reg_read(reg.UC_ARM64_REG_SP)
         next_pc = cpu_emulator.reg_read(reg.UC_ARM64_REG_PC)
@@ -374,9 +362,7 @@ def record_register_states(
         frame_states.append(snapshot_frames(new_sp))
 
         executed_addresses.append(PC)
-        instruction_number.append(
-            (PC - starting_address) // 4 + 1
-        )
+        instruction_number.append(instruction_indices[PC])
 
         PC = next_pc
         counter += 1
@@ -389,35 +375,6 @@ def record_register_states(
         memory_accesses,
         frame_states,
     )
-
-import re
-
-def map_addresses_to_lines(assembly_code):
-    address_to_line = {}
-    address_to_labels = {}
-    address = 0x1000
-
-    for line_number, line in enumerate(assembly_code.splitlines(), start=1):
-        instruction = line.split("//", 1)[0].strip()
-
-        while True:
-            label = re.match(r"^([\w.$]+):\s*", instruction)
-            if not label:
-                break
-
-            label_name = label.group(1)
-            address_to_labels.setdefault(address, []).append(label_name)
-
-            instruction = instruction[label.end():].strip()
-
-        if not instruction:
-            continue
-
-        address_to_line[address] = line_number
-        address += 4
-
-    return address_to_line, address_to_labels
-
 
 def main():
     assem = """mov x1, #3
@@ -435,8 +392,7 @@ def main():
     end_if:
         add x4, x3, #7
     """
-    #print(convert_assembly_to_byte(assem))
-    print(run_byte_code(convert_assembly_to_byte(assem)))
+    print(run_program(assemble_program(assem)))
 
 if __name__ == '__main__':
     main()

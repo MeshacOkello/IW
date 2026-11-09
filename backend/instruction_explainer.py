@@ -9,8 +9,6 @@ from simulator import STACK_START, STACK_END
 
 SP, PC, NZCV = 31, 32, 33
 
-UNMATCHED_LINES = ("No explanation: some source lines don't match the assembled instructions "
-                   "one-to-one (for example .equ lines), so the line shown may not be the one running.")
 TRACE_MISMATCH = "No explanation: the recorded trace doesn't match this line."
 
 LOAD_SIZES = {'ldr': None, 'ldrb': 1, 'ldrh': 2, 'ldrsb': 1, 'ldrsh': 2, 'ldrsw': 4}
@@ -529,8 +527,8 @@ def explain_adr(step):
     destination = step.operand(0, 'reg')
     label = step.operand(1, 'label')['name']
     result = step.read(destination, 'after')
-    return (f"Put the address of {label} ({hex(result)}) into {name(destination)}. "
-            f"adr only computes the address; it doesn't read memory.")
+    target = f"the page containing {label}" if step.mnemonic == 'adrp' else label
+    return f"Put the address of {target} ({hex(result)}) into {name(destination)}."
 
 
 # ---------- loads and stores ----------
@@ -657,6 +655,7 @@ HANDLERS = {
     'cbz': explain_compare_branch, 'cbnz': explain_compare_branch,
     'bl': explain_call, 'ret': explain_return, 'br': explain_return,
     'adr': explain_adr,
+    'adrp': explain_adr,
     **{mnemonic: explain_memory for mnemonic in list(LOAD_SIZES) + list(STORE_SIZES)},
 }
 
@@ -679,13 +678,9 @@ def explain_step(line, before, after, before_stack, accesses):
 
 # One explanation per snapshot: explanations[i] describes the instruction that
 # turned snapshot i - 1 into snapshot i. explanations[0] is None.
-def explain_trace(source_lines, executed_lines, register_states, stack_states, memory_accesses, lines_match):
+def explain_trace(executed_statements, register_states, stack_states, memory_accesses):
     explanations = [None]
-    for i in range(1, len(register_states)):
-        line_number = executed_lines[i]
-        if not lines_match or line_number is None:
-            explanations.append(UNMATCHED_LINES)
-            continue
-        explanations.append(explain_step(source_lines[line_number - 1], register_states[i - 1],
+    for i, statement in enumerate(executed_statements, start=1):
+        explanations.append(explain_step(statement.text, register_states[i - 1],
                                          register_states[i], stack_states[i - 1], memory_accesses[i]))
     return explanations
