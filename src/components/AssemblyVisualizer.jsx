@@ -18,6 +18,16 @@ mul x5, x3, x2`);
     const [isRunning, setIsRunning] = useState(false);
     const [memoryFormat, setMemoryFormat] = useState("hex");
 
+    const heapAllocations = history?.heap_states?.[stepIndex]?.map((allocationId) => {
+        const { versions, chunks } = history.heap_allocations;
+        const allocation = versions[allocationId];
+        return {
+            address: allocation.address,
+            size: allocation.size,
+            contents: allocation.chunks.map((chunkId) => chunks[chunkId]).join(""),
+        };
+    });
+
     function handleRun() {
         if (history == null) return;
         if (stepIndex == history.register_states.length - 1) return;
@@ -69,13 +79,15 @@ mul x5, x3, x2`);
 
     useEffect(() => {
         if (!history || !isRunning) return;
-        if (stepIndex == history.register_states.length - 1) {
-            setIsRunning(false);
-            return;
-        }
-        const timer =setTimeout(() => {setStepIndex(stepIndex+1)}, 900);
+        const lastStep = history.register_states.length - 1;
+        if (stepIndex >= lastStep) return;
+        const timer = setTimeout(() => {
+            const nextStep = stepIndex + 1;
+            setStepIndex(nextStep);
+            if (nextStep === lastStep) setIsRunning(false);
+        }, 900);
 
-        return ()=> clearTimeout(timer);
+        return () => clearTimeout(timer);
     }, [stepIndex, isRunning, history]);
 
     return(
@@ -110,6 +122,7 @@ mul x5, x3, x2`);
                 <div className="memory-panel">
                 <MemoryPanel
                     stackValues={history?.stack_states[stepIndex]}
+                    heapAllocations={heapAllocations}
                     frameValues={history?.frame_states?.[stepIndex]}
                     memoryFormat={memoryFormat}
                     setMemoryFormat={setMemoryFormat}

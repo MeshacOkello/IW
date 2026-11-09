@@ -5,6 +5,9 @@ from unicorn import (
 import unicorn.arm64_const as reg
 
 from assembler import STACK_START, STACK_END, TEXT_START, assemble_program, page_size
+from heap import HEAP_SIZE, HEAP_START, LIBRARY_SYMBOLS, Heap, HeapError
+
+LIBRARY_TARGETS = {address: name for name, address in LIBRARY_SYMBOLS.items()}
 
 # Dictionary that maps register name to its Unicorn register identifier (just for simplicity)
 registers = {
@@ -64,6 +67,7 @@ def run_program(program):
 
     cpu_emulator.mem_map(STACK_START, STACK_END - STACK_START, UC_PROT_READ | UC_PROT_WRITE)
     cpu_emulator.reg_write(reg.UC_ARM64_REG_SP, STACK_END)
+    cpu_emulator.mem_map(HEAP_START, HEAP_SIZE, UC_PROT_READ | UC_PROT_WRITE)
 
     address_to_labels = {}
     for label, address in program.symbols.items():
@@ -223,13 +227,18 @@ def record_register_states(
     stack_writes = []
     memory_accesses = [[]]
     step_accesses = []
+    heap = Heap()
+    heap_states = [[]]
+    library_calls = {}
 
     def record_write(uc, access, address, size, value, user_data):
         stack_writes.append((address, size))
 
     def record_access(uc, access, address, size, value, user_data):
+        kind = 'write' if access == UC_MEM_WRITE else 'read'
+        heap.record_access(address, size, kind)
         step_accesses.append({
-            'kind': 'write' if access == UC_MEM_WRITE else 'read',
+            'kind': kind,
             'address': address,
             'size': size,
         })
@@ -313,8 +322,26 @@ def record_register_states(
         stack_writes.clear()
         step_accesses.clear()
 
+        library_call = None
+        if is_bl:
+            # BL's low 26 bits are a signed, word-scaled PC-relative offset.
+            displacement = (instruction & 0x03FFFFFF) - (instruction & 0x02000000) * 2
+            library_call = LIBRARY_TARGETS.get(PC + displacement * 4)
+
         try:
-            cpu_emulator.emu_start(PC, stopping_address, count=1)
+            if library_call:
+                argument = cpu_emulator.reg_read(reg.UC_ARM64_REG_X0)
+                if library_call == 'malloc':
+                    cpu_emulator.reg_write(reg.UC_ARM64_REG_X0, heap.malloc(argument))
+                else:
+                    heap.free(argument)
+                cpu_emulator.reg_write(reg.UC_ARM64_REG_X30, PC + 4)
+                cpu_emulator.reg_write(reg.UC_ARM64_REG_PC, PC + 4)
+                library_calls[PC] = library_call
+            else:
+                cpu_emulator.emu_start(PC, stopping_address, count=1)
+        except HeapError as error:
+            raise HeapError(f'Line {instructions[PC].line}: {error}') from error
         except UcError as error:
             # Unicorn may try to fetch the branch destination before it
             # returns from a single step. Record the branch, then let the
@@ -342,7 +369,9 @@ def record_register_states(
             read_stack(cpu_emulator, stack_cells, new_sp)
         )
 
-        if is_bl or is_blr:
+        heap_states.append(heap.snapshot(cpu_emulator.mem_read))
+
+        if (is_bl and not library_call) or is_blr:
             # The actual destination PC identifies the called function.
             labels = address_to_labels.get(next_pc, [])
 
@@ -374,6 +403,9 @@ def record_register_states(
         instruction_number,
         memory_accesses,
         frame_states,
+        heap_states,
+        {'versions': heap.snapshots, 'chunks': heap.chunks},
+        library_calls,
     )
 
 def main():

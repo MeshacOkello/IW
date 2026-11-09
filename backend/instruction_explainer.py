@@ -676,11 +676,25 @@ def explain_step(line, before, after, before_stack, accesses):
         return str(error)
 
 
+def explain_heap_call(call, argument, result):
+    if call == 'malloc':
+        if result == 0:
+            return f"malloc could not allocate {argument} bytes. It returns NULL in x0."
+        return f"malloc allocates {argument} bytes at {result:#x} and returns the address in x0."
+    if argument == 0:
+        return "free(NULL) leaves the heap unchanged."
+    return f"free releases the allocation at {argument:#x}."
+
+
 # One explanation per snapshot: explanations[i] describes the instruction that
 # turned snapshot i - 1 into snapshot i. explanations[0] is None.
-def explain_trace(executed_statements, register_states, stack_states, memory_accesses):
+def explain_trace(executed_statements, register_states, stack_states, memory_accesses, library_calls):
     explanations = [None]
     for i, statement in enumerate(executed_statements, start=1):
-        explanations.append(explain_step(statement.text, register_states[i - 1],
-                                         register_states[i], stack_states[i - 1], memory_accesses[i]))
+        before, after = register_states[i - 1:i + 1]
+        call = library_calls.get(before[PC])
+        if call:
+            explanations.append(explain_heap_call(call, before[0], after[0]))
+        else:
+            explanations.append(explain_step(statement.text, before, after, stack_states[i - 1], memory_accesses[i]))
     return explanations

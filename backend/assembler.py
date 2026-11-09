@@ -4,6 +4,7 @@ from dataclasses import dataclass
 
 from keystone import KS_ARCH_ARM64, KS_MODE_LITTLE_ENDIAN, Ks, KsError
 
+from heap import LIBRARY_SYMBOLS
 from instruction_parser import parse_number
 
 PAGE_SIZE = 0x1000
@@ -263,6 +264,15 @@ def assemble_section(assembler, name, address, statements, constants, externals,
 def assemble_program(source):
     sections, constants, owners = split_sections(source)
     assembler = Ks(KS_ARCH_ARM64, KS_MODE_LITTLE_ENDIAN)
+    constant_names = {
+        definition.split(None, 1)[1].split(',', 1)[0].strip()
+        for group in constants.values() for definition in group
+        if len(definition.split(None, 1)) == 2
+    }
+    library_symbols = {
+        name: address for name, address in LIBRARY_SYMBOLS.items()
+        if name not in owners and name not in constant_names
+    }
     marker_prefix = '__simulator_location_'
     while marker_prefix in source:
         marker_prefix += '_'
@@ -279,13 +289,13 @@ def assemble_program(source):
     address = STACK_END
     for name in SECTION_NAMES[1:]:
         externals = {label: 0 for label, owner in owners.items() if owner != name}
-        data, labels, _ = assemble_section(assembler, name, address, sections[name], external_constants[name], externals, marker_prefix)
+        data, labels, _ = assemble_section(assembler, name, address, sections[name], external_constants[name], library_symbols | externals, marker_prefix)
         layouts[name] = address, len(data)
         symbols.update(labels)
         address += page_size(max(len(data), 1))
 
     code, labels, instructions = assemble_section(
-        assembler, '.text', TEXT_START, sections['.text'], external_constants['.text'], symbols, marker_prefix,
+        assembler, '.text', TEXT_START, sections['.text'], external_constants['.text'], library_symbols | symbols, marker_prefix,
     )
     if TEXT_START + len(code) > STACK_START:
         raise AssemblyError('.text: section exceeds the space below the stack')
@@ -294,7 +304,7 @@ def assemble_program(source):
 
     for name, (address, size) in layouts.items():
         externals = {label: value for label, value in symbols.items() if owners[label] != name}
-        data, labels, _ = assemble_section(assembler, name, address, sections[name], external_constants[name], externals, marker_prefix)
+        data, labels, _ = assemble_section(assembler, name, address, sections[name], external_constants[name], library_symbols | externals, marker_prefix)
         if len(data) != size or any(symbols[label] != value for label, value in labels.items()):
             raise AssemblyError(f'{name}: section layout depends on a cross-section symbol')
         if name == '.bss':

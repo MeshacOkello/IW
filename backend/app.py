@@ -2,6 +2,7 @@ from flask import Flask, request, jsonify
 from unicorn import UcError
 
 from assembler import AssemblyError, assemble_program
+from heap import HeapError
 from simulator import run_program
 from instruction_explainer import explain_trace
 
@@ -22,8 +23,11 @@ def simulate():
             instruction_numbers,
             memory_accesses,
             frame_states,
+            heap_states,
+            heap_allocations,
+            library_calls,
         ) = run_program(program)
-    except (AssemblyError, UcError) as error:
+    except (AssemblyError, HeapError, UcError) as error:
         return jsonify(error=str(error)), 400
 
     executed_statements = [program.instructions[address] for address in executed_addresses[1:]]
@@ -33,6 +37,7 @@ def simulate():
         register_states,
         stack_states,
         memory_accesses,
+        library_calls,
     )
 
     response = {
@@ -44,6 +49,8 @@ def simulate():
         'explanations': explanations,
         'frame_states': frame_states,
         'memory_accesses': memory_accesses,
+        'heap_states': heap_states,
+        'heap_allocations': heap_allocations,
     }
 
     return jsonify(response)

@@ -3,6 +3,7 @@ import Heap from "./Heap";
 
 export default function MemoryPanel({
     stackValues,
+    heapAllocations,
     frameValues,
     memoryFormat,
     setMemoryFormat,
@@ -35,7 +36,11 @@ export default function MemoryPanel({
                     stackPointer={stackPointer}
                     memoryAccesses={memoryAccesses}
                 />
-                <Heap />
+                <Heap
+                    allocations={heapAllocations}
+                    memoryFormat={memoryFormat}
+                    memoryAccesses={memoryAccesses}
+                />
             </div>
         </div>
     );

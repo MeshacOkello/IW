@@ -336,8 +336,31 @@ body {
   justify-content: flex-start;
 }
 
-.heap-bar > .memory-cell:first-child {
-  margin-top: auto;
+.heap-empty {
+  margin: 8px;
+  font-size: 13px;
+}
+
+.heap-allocation {
+  flex-shrink: 0;
+  border-bottom: 1px solid lightgray;
+}
+
+.heap-allocation .memory-cell {
+  border: 0;
+  background: #f2f4f7;
+}
+
+.heap-contents {
+  padding: 0 6px 6px;
+  font: 13px monospace;
+  line-height: 1.5;
+}
+
+.heap-written {
+  color: #372d12;
+  background: #ffe49a;
+  font-weight: bold;
 }
 
 .stack-labels {

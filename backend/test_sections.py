@@ -12,8 +12,9 @@ class SectionSimulationTests(unittest.TestCase):
         response = self.client.post('/simulate', json={'assembly_code': source})
         self.assertEqual(response.status_code, 200, response.get_json())
         trace = response.get_json()
-        for series in trace.values():
-            self.assertEqual(len(series), len(trace['register_states']))
+        for key, series in trace.items():
+            if key != 'heap_allocations':
+                self.assertEqual(len(series), len(trace['register_states']))
         return trace
 
     def test_interleaved_sections_load_strings_and_initialize_writable_storage(self):
