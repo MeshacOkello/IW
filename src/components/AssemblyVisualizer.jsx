@@ -3,6 +3,7 @@ import NextInstruction from "./NextInstruction";
 import CodeEditor from "./CodeEditor";
 import RegisterPanel from "./RegisterPanel";
 import MemoryPanel from "./MemoryPanel";
+import Section from "./Section";
 import NumberText from "./NumberText";
 import { useState, useEffect } from "react";
 
@@ -155,6 +156,7 @@ mul x5, x3, x2`);
                         formats={formats}
                     />
                 </div>
+                <div className="register-column">
                 <div className="register-panel">
                 <RegisterPanel
                     registerValues={registerSnapshot(history, stepIndex)}
@@ -162,6 +164,14 @@ mul x5, x3, x2`);
                     pointerRegisters={history?.pointer_states?.[stepIndex]}
                     formats={formats}
                 />                </div>
+                <div className="rodata-panel">
+                <Section
+                    name=".rodata"
+                    section={sectionContents?.find((section) => section.name === ".rodata")}
+                    formats={formats}
+                    memoryAccesses={history?.memory_accesses?.[stepIndex]}
+                />                </div>
+                </div>
                 <div className="memory-panel">
                 <MemoryPanel
                     stackValues={stackValues}

@@ -17,32 +17,35 @@ function cellText(bytes) {
         .join("");
 }
 
-// Interleave the section's labels with its memory rows so each row of bytes
-// sits under the symbol it belongs to.
-function sectionRows(symbols, cells) {
+// Interleave the section's labels with its memory rows. Rows restart at every
+// label, so a symbol that does not begin on an 8-byte boundary still shows all
+// of its own bytes and none of its neighbour's.
+function sectionRows({ address, size, symbols, contents }) {
     const sorted = [...symbols].sort((first, second) => first.address - second.address);
+    const end = address + size;
     const rows = [];
-    let next = 0;
+    let cursor = address;
 
-    function addLabels(limit) {
-        while (next < sorted.length && (limit === null || sorted[next].address < limit)) {
-            rows.push({ kind: "label", key: `label-${sorted[next].name}`, symbol: sorted[next] });
-            next += 1;
+    function addCells(limit) {
+        if (limit <= cursor) return;
+        const bytes = contents.slice((cursor - address) * 2, (limit - address) * 2);
+        for (const cell of memoryCells(cursor, limit - cursor, bytes)) {
+            rows.push({ kind: "cell", key: `cell-${cell.address}`, cell });
         }
+        cursor = limit;
     }
 
-    for (const cell of cells) {
-        addLabels(cell.address + cell.size);
-        rows.push({ kind: "cell", key: `cell-${cell.address}`, cell });
+    for (const symbol of sorted) {
+        addCells(Math.min(symbol.address, end));
+        rows.push({ kind: "label", key: `label-${symbol.name}`, symbol });
     }
-    addLabels(null);
+    addCells(end);
     return rows;
 }
 
 export default function Section({ name, section, formats, memoryAccesses = [] }) {
     const { address = 0, size = 0, symbols = [], strings = [], contents = "" } = section ?? {};
-    const cells = memoryCells(address, size, contents);
-    const rows = sectionRows(symbols, cells);
+    const rows = sectionRows({ address, size, symbols, contents });
     const writes = memoryAccesses.filter((access) => access.kind === "write");
 
     function renderRow(row) {

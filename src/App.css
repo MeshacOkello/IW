@@ -213,8 +213,33 @@ body {
 
 /* Registers */
 
-.register-panel {
+.register-column {
   min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.register-panel {
+  box-sizing: border-box;
+  flex: 0 1 auto;
+  min-width: 0;
+  min-height: 0;
+  padding: 12px;
+  border: 1px solid lightgray;
+  border-radius: 3px;
+  overflow-y: auto;
+}
+
+/* .rodata fills what the registers leave of their column. */
+.rodata-panel {
+  box-sizing: border-box;
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 140px;
+  display: flex;
+  flex-direction: column;
   padding: 12px;
   border: 1px solid lightgray;
   border-radius: 3px;
@@ -344,12 +369,13 @@ body {
   min-width: 0;
   min-height: 0;
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
   margin-top: 12px;
 }
 
 .section-region {
+  flex: 1;
   min-width: 0;
   min-height: 0;
   display: flex;

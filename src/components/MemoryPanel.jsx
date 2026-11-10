@@ -2,8 +2,8 @@ import Stack from "./Stack";
 import Heap from "./Heap";
 import Section from "./Section";
 
-// .text has no visualization; the data sections are shown in this order.
-const SECTION_NAMES = [".data", ".bss", ".rodata"];
+// .text has no visualization, and .rodata sits under the registers.
+const SECTION_NAMES = [".data", ".bss"];
 
 export default function MemoryPanel({
     stackValues,

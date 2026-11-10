@@ -122,6 +122,28 @@ str x1, [x2]
         self.assertEqual(len(versions), 5)
         self.assertEqual(trace['section_states'][0], trace['section_states'][4])
 
+    def test_a_label_after_a_string_keeps_its_own_unpadded_address(self):
+        # Nothing pads a label that follows a string, so the symbol and string
+        # bounds the frontend groups rows by have to be exact.
+        source = r"""
+.section .rodata
+message: .asciz "Hello ARM64!"
+constant: .quad 100
+.section .text
+nop
+"""
+        trace = self.simulate(source)
+        rodata = next(section for section in trace['sections']['layout'] if section['name'] == '.rodata')
+        start = rodata['address']
+        self.assertEqual(rodata['symbols'], [
+            {'name': 'message', 'address': start},
+            {'name': 'constant', 'address': start + 13},
+        ])
+        self.assertEqual(rodata['strings'], [[start, start + 13]])
+        self.assertEqual(rodata['size'], 21)
+        contents = trace['sections']['versions'][trace['section_states'][0]['.rodata']]
+        self.assertEqual(bytes.fromhex(contents), b'Hello ARM64!\0' + (100).to_bytes(8, 'little'))
+
     def test_sections_without_data_are_listed_empty(self):
         trace = self.simulate('mov x0, #1')
         self.assertEqual(
