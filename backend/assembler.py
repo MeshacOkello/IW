@@ -24,6 +24,7 @@ DATA_DIRECTIVES = {
     '.ascii', '.asciz', '.string', '.byte', '.hword', '.short', '.2byte',
     '.word', '.long', '.4byte', '.quad', '.xword', '.8byte', '.float', '.double',
 }
+STRING_DIRECTIVES = {'.ascii', '.asciz', '.string'}
 RESERVE_DIRECTIVES = {'.space', '.skip', '.zero'}
 ALIGN_DIRECTIVES = {'.align', '.p2align', '.balign'}
 METADATA = {'.global', '.globl', '.type', '.size', '.local', '.hidden', '.extern'}
@@ -50,6 +51,8 @@ class Section:
     address: int
     size: int
     data: bytes
+    # Address ranges the string directives produced, so text can be shown as text.
+    strings: tuple[tuple[int, int], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -57,6 +60,8 @@ class Program:
     sections: tuple[Section, ...]
     symbols: dict[str, int]
     instructions: dict[int, Statement]
+    # The section each label was defined in.
+    owners: dict[str, str]
 
 
 def page_size(size):
@@ -194,11 +199,12 @@ def encode_address_instruction(assembler, statement, pc, target):
 
 def assemble_section(assembler, name, address, statements, constants, externals, marker_prefix):
     if not statements:
-        return b'', {}, {}
+        return b'', {}, {}, ()
     lines = definitions(externals) + constants
     labels = []
     sites = {}
     markers = []
+    strings = []
     for statement in statements:
         for label in statement.labels:
             lines.append(label + ':')
@@ -206,7 +212,15 @@ def assemble_section(assembler, name, address, statements, constants, externals,
             markers.append(label)
         if not statement.is_instruction:
             if statement.text:
-                lines.append(statement.text)
+                # Bracket string data so its bytes can be displayed as text.
+                if statement.text.split(None, 1)[0].lower() in STRING_DIRECTIVES:
+                    start = f'{marker_prefix}string{len(strings)}'
+                    end = f'{start}_end'
+                    lines.extend((start + ':', statement.text, end + ':'))
+                    markers.extend((start, end))
+                    strings.append((start, end))
+                else:
+                    lines.append(statement.text)
             continue
 
         start = f'{marker_prefix}{len(sites)}'
@@ -258,7 +272,12 @@ def assemble_section(assembler, name, address, statements, constants, externals,
             if target is not None and target >= 1 << 63:
                 target -= 1 << 64
             code[pc - address:end - address] = encode_address_instruction(assembler, statement, pc, target)
-    return bytes(code), {label: values[label] for label in labels}, instructions
+    return (
+        bytes(code),
+        {label: values[label] for label in labels},
+        instructions,
+        tuple((values[start], values[end]) for start, end in strings),
+    )
 
 
 def assemble_program(source):
@@ -289,12 +308,12 @@ def assemble_program(source):
     address = STACK_END
     for name in SECTION_NAMES[1:]:
         externals = {label: 0 for label, owner in owners.items() if owner != name}
-        data, labels, _ = assemble_section(assembler, name, address, sections[name], external_constants[name], library_symbols | externals, marker_prefix)
+        data, labels, _, _ = assemble_section(assembler, name, address, sections[name], external_constants[name], library_symbols | externals, marker_prefix)
         layouts[name] = address, len(data)
         symbols.update(labels)
         address += page_size(max(len(data), 1))
 
-    code, labels, instructions = assemble_section(
+    code, labels, instructions, _ = assemble_section(
         assembler, '.text', TEXT_START, sections['.text'], external_constants['.text'], library_symbols | symbols, marker_prefix,
     )
     if TEXT_START + len(code) > STACK_START:
@@ -304,12 +323,12 @@ def assemble_program(source):
 
     for name, (address, size) in layouts.items():
         externals = {label: value for label, value in symbols.items() if owners[label] != name}
-        data, labels, _ = assemble_section(assembler, name, address, sections[name], external_constants[name], library_symbols | externals, marker_prefix)
+        data, labels, _, strings = assemble_section(assembler, name, address, sections[name], external_constants[name], library_symbols | externals, marker_prefix)
         if len(data) != size or any(symbols[label] != value for label, value in labels.items()):
             raise AssemblyError(f'{name}: section layout depends on a cross-section symbol')
         if name == '.bss':
             if any(data):
                 raise AssemblyError('.bss: storage must be zero-filled')
             data = b''
-        image.append(Section(name, address, size, data))
-    return Program(tuple(image), symbols, instructions)
+        image.append(Section(name, address, size, data, strings))
+    return Program(tuple(image), symbols, instructions, owners)

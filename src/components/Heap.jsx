@@ -1,33 +1,22 @@
 import { formatNumber } from "../numberFormat";
-
-const CELL_BYTES = 8;
+import { cellValue, memoryCells } from "../memoryCells";
 
 function allocationCells(allocation, writes) {
     const { address, size, contents } = allocation;
-    const cells = [];
-    for (let offset = 0; offset < size; offset += CELL_BYTES) {
-        const end = Math.min(size, offset + CELL_BYTES);
-        const bytes = contents.slice(offset * 2, end * 2).match(/../g);
-        const cellAddress = address + offset;
-        cells.push({
-            address: cellAddress,
-            bytes,
-            written: writes.some((write) =>
-                write.address < address + end && cellAddress < write.address + write.size
-            ),
-        });
-    }
-    return cells;
+    return memoryCells(address, size, contents).map((cell) => ({
+        ...cell,
+        written: writes.some((write) =>
+            write.address < cell.address + cell.size && cell.address < write.address + write.size
+        ),
+    }));
 }
 
 function CellContents({ cell, dataFormat }) {
-    const initialized = cell.bytes.filter((byte) => byte !== "??");
-    if (initialized.length === 0) return "[empty]";
+    const value = cellValue(cell.bytes);
+    if (value === null) return "[empty]";
 
-    // Pack the known bytes in little-endian order without padding gaps.
-    const value = BigInt("0x" + initialized.reverse().join(""));
     const text = formatNumber(value, dataFormat);
-    const partial = initialized.length < cell.bytes.length;
+    const partial = cell.bytes.some((byte) => byte === "??");
     return (
         <span title={partial ? "Only initialized bytes are included" : undefined}>
             {text}

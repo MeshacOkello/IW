@@ -8,6 +8,8 @@ from instruction_explainer import explain_trace
 
 app = Flask(__name__)
 MAX_SAFE_INTEGER = (1 << 53) - 1
+# The order the data sections are shown in. .text has no visualization.
+DISPLAYED_SECTIONS = ('.data', '.bss', '.rodata')
 
 
 def exact_display_values(registers, stack):
@@ -20,6 +22,31 @@ def exact_display_values(registers, stack):
         },
     }
     return exact if any(exact.values()) else None
+
+
+def section_layout(program):
+    """Describe each data section and the labels defined inside it."""
+    sections = {section.name: section for section in program.sections}
+    layout = []
+    for name in DISPLAYED_SECTIONS:
+        section = sections.get(name)
+        symbols = sorted(
+            (
+                {'name': label, 'address': program.symbols[label]}
+                for label, owner in program.owners.items()
+                if owner == name and label in program.symbols
+            ),
+            key=lambda symbol: symbol['address'],
+        )
+        layout.append({
+            'name': name,
+            'address': section.address if section else None,
+            'size': section.size if section else 0,
+            'symbols': symbols,
+            # Byte ranges that hold text rather than numbers.
+            'strings': [list(span) for span in section.strings] if section else [],
+        })
+    return layout
 
 
 @app.route('/simulate', methods=["POST"])
@@ -40,6 +67,8 @@ def simulate():
             heap_allocations,
             library_calls,
             pointer_states,
+            section_states,
+            section_versions,
         ) = run_program(program)
     except HeapError as error:
         return jsonify(error=str(error), error_parts=error.parts), 400
@@ -71,6 +100,8 @@ def simulate():
         'memory_accesses': memory_accesses,
         'heap_states': heap_states,
         'heap_allocations': heap_allocations,
+        'sections': {'layout': section_layout(program), 'versions': section_versions},
+        'section_states': section_states,
     }
 
     return jsonify(response)

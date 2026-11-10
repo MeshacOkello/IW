@@ -1,5 +1,9 @@
 import Stack from "./Stack";
 import Heap from "./Heap";
+import Section from "./Section";
+
+// .text has no visualization; the data sections are shown in this order.
+const SECTION_NAMES = [".data", ".bss", ".rodata"];
 
 export default function MemoryPanel({
     stackValues,
@@ -8,7 +12,10 @@ export default function MemoryPanel({
     formats,
     stackPointer,
     memoryAccesses,
+    sections,
 }) {
+    const layout = new Map((sections ?? []).map((section) => [section.name, section]));
+
     return (
         <div>
             <div className="memory-header">
@@ -29,6 +36,18 @@ export default function MemoryPanel({
                     formats={formats}
                     memoryAccesses={memoryAccesses}
                 />
+            </div>
+
+            <div className="section-columns">
+                {SECTION_NAMES.map((name) => (
+                    <Section
+                        key={name}
+                        name={name}
+                        section={layout.get(name)}
+                        formats={formats}
+                        memoryAccesses={memoryAccesses}
+                    />
+                ))}
             </div>
         </div>
     );

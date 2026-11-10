@@ -13,7 +13,7 @@ class SectionSimulationTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200, response.get_json())
         trace = response.get_json()
         for key, series in trace.items():
-            if key != 'heap_allocations':
+            if key not in ('heap_allocations', 'sections'):
                 self.assertEqual(len(series), len(trace['register_states']))
         return trace
 
@@ -66,6 +66,71 @@ ldr x10, [x9]
         self.assertIn({'kind': 'write', 'address': value, 'size': 1}, accesses)
         self.assertIn({'kind': 'write', 'address': scratch, 'size': 4}, accesses)
         self.assertEqual(self.simulate(source)['register_states'][-1][7], 0)
+
+    def test_section_snapshots_track_labels_strings_and_writes(self):
+        source = r"""
+.data
+counter: .quad 7
+array: .quad 10, 20
+.rodata
+greeting: .asciz "Hi\n"
+.bss
+total: .skip 8
+.text
+adrp x0, counter
+add x0, x0, :lo12:counter
+ldr x1, [x0]
+add x1, x1, #1
+str x1, [x0]
+adr x2, total
+str x1, [x2]
+"""
+        program = assemble_program(source)
+        trace = self.simulate(source)
+        layout = {section['name']: section for section in trace['sections']['layout']}
+        self.assertEqual([section['name'] for section in trace['sections']['layout']], ['.data', '.bss', '.rodata'])
+        self.assertEqual(layout['.data']['size'], 24)
+        self.assertEqual(layout['.data']['symbols'], [
+            {'name': 'counter', 'address': program.symbols['counter']},
+            {'name': 'array', 'address': program.symbols['array']},
+        ])
+        self.assertEqual(layout['.bss']['symbols'], [{'name': 'total', 'address': program.symbols['total']}])
+
+        # .rodata holds the string's bytes, and its span is reported as text.
+        self.assertEqual(layout['.rodata']['strings'],
+                         [[layout['.rodata']['address'], layout['.rodata']['address'] + 4]])
+        self.assertEqual(layout['.data']['strings'], [])
+
+        versions = trace['sections']['versions']
+        contents = [
+            {name: versions[version] for name, version in state.items()}
+            for state in trace['section_states']
+        ]
+        first, last = contents[0], contents[-1]
+        self.assertEqual(first['.data'], (7).to_bytes(8, 'little').hex() + (10).to_bytes(8, 'little').hex()
+                         + (20).to_bytes(8, 'little').hex())
+        self.assertEqual(first['.rodata'], b'Hi\n\0'.hex())
+
+        # .data and .bss follow the stores, and earlier steps keep their bytes.
+        self.assertEqual(first['.bss'], (0).to_bytes(8, 'little').hex())
+        self.assertEqual(last['.data'][:16], (8).to_bytes(8, 'little').hex())
+        self.assertEqual(last['.bss'], (8).to_bytes(8, 'little').hex())
+        self.assertEqual(contents[4]['.data'], first['.data'])
+        self.assertEqual(last['.rodata'], first['.rodata'])
+
+        # Only the two stores add a version; untouched steps reuse their own.
+        self.assertEqual(len(versions), 5)
+        self.assertEqual(trace['section_states'][0], trace['section_states'][4])
+
+    def test_sections_without_data_are_listed_empty(self):
+        trace = self.simulate('mov x0, #1')
+        self.assertEqual(
+            [(section['name'], section['size'], section['symbols'])
+             for section in trace['sections']['layout']],
+            [(name, 0, []) for name in ('.data', '.bss', '.rodata')],
+        )
+        self.assertEqual(trace['sections']['versions'], [])
+        self.assertEqual(trace['section_states'], [{}, {}])
 
     def test_forward_backward_and_same_page_addresses(self):
         source = '''start: nop

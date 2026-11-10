@@ -316,7 +316,7 @@ body {
 }
 
 .memory-columns {
-  flex: 1;
+  flex: 3 1 0;
   min-width: 0;
   min-height: 0;
   display: grid;
@@ -335,6 +335,87 @@ body {
   flex-shrink: 0;
   margin: 0 0 12px;
   text-align: center;
+}
+
+/* Data sections */
+
+.section-columns {
+  flex: 1.3 1 0;
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.section-region {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.section-region > h5 {
+  flex-shrink: 0;
+  margin: 0 0 4px;
+  font-family: var(--mono);
+  text-align: center;
+}
+
+.section-bar {
+  flex: 1;
+  min-height: 0;
+  border: 1px solid lightgray;
+  overflow: auto;
+}
+
+/* The spacer above the first rendered row keeps the scrollbar honest while
+   only the visible rows exist. Rows size to the widest one so a long string
+   or a wide number scrolls sideways instead of being cut off. */
+.virtual-rows {
+  box-sizing: border-box;
+  width: max-content;
+  min-width: 100%;
+}
+
+.virtual-row {
+  width: 100%;
+}
+
+.section-cell {
+  height: 100%;
+  gap: 6px;
+  padding: 0 6px;
+  border: none;
+  border-bottom: 1px solid lightgray;
+  line-height: 16px;
+}
+
+.section-cell .address-value {
+  flex: none;
+}
+
+.section-cell span:last-child {
+  margin-left: auto;
+}
+
+.section-label {
+  display: flex;
+  align-items: center;
+  height: 100%;
+  padding: 0 6px;
+  border-bottom: 1px solid lightgray;
+  background: var(--code-bg);
+  color: var(--text-h);
+  font: 600 12px/1 var(--mono);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.section-string {
+  color: light-dark(#8a4b00, #e5b26b);
 }
 
 .stack-bar,

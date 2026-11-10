@@ -42,6 +42,12 @@ mul x5, x3, x2`);
         };
     });
 
+    // Each step names the version of every section, as the heap does.
+    const sectionContents = history?.sections?.layout?.map((section) => ({
+        ...section,
+        contents: history.sections.versions[history.section_states[stepIndex][section.name]] ?? "",
+    }));
+
     function handleRun() {
         if (history == null) return;
         if (stepIndex == history.register_states.length - 1) return;
@@ -164,6 +170,7 @@ mul x5, x3, x2`);
                     formats={formats}
                     stackPointer={history?.register_states?.[stepIndex]?.[31]}
                     memoryAccesses={history?.memory_accesses?.[stepIndex]}
+                    sections={sectionContents}
                 />                </div>
             </div>
         </div>

@@ -51,6 +51,20 @@ registers = {
 }
 
 
+# A section's bytes, in the hex form the heap already uses for its contents.
+def read_section(read_memory, section):
+    return bytes(read_memory(section.address, section.size)).hex()
+
+
+def written_in(accesses, section):
+    return any(
+        access['kind'] == 'write'
+        and access['address'] < section.address + section.size
+        and section.address < access['address'] + access['size']
+        for access in accesses
+    )
+
+
 def run_program(program):
     cpu_emulator = Uc(UC_ARCH_ARM64, UC_MODE_ARM)
     cpu_emulator.reg_write(reg.UC_ARM64_REG_NZCV, 0)
@@ -75,7 +89,13 @@ def run_program(program):
     for label, address in program.symbols.items():
         if address in program.instructions:
             address_to_labels.setdefault(address, []).append(label)
-    return record_register_states(cpu_emulator, program.instructions, address_to_labels, program.symbols)
+    data_sections = [
+        section for section in program.sections
+        if section.name != '.text' and section.size
+    ]
+    return record_register_states(
+        cpu_emulator, program.instructions, address_to_labels, program.symbols, data_sections,
+    )
 
 
 # The stack is tracked as a sorted list of non-overlapping cells
@@ -221,6 +241,7 @@ def record_register_states(
     instructions,
     address_to_labels,
     symbols,
+    data_sections=(),
 ):
     register_states = []
     pointer_states = [[SP_INDEX, PC_INDEX]]
@@ -235,6 +256,15 @@ def record_register_states(
     heap = Heap()
     heap_states = [[]]
     library_calls = {}
+    # Sections follow the heap's bookkeeping: each step names the version of
+    # every section, and a version is only added when its bytes change.
+    section_versions = []
+    section_ids = {}
+    for section in data_sections:
+        section_versions.append(read_section(cpu_emulator.mem_read, section))
+        section_ids[section.name] = len(section_versions) - 1
+    section_states = [dict(section_ids)]
+    writable_sections = [section for section in data_sections if section.name != '.rodata']
 
     def record_write(uc, access, address, size, value, user_data):
         stack_writes.append((address, size))
@@ -379,6 +409,16 @@ def record_register_states(
 
         heap_states.append(heap.snapshot(cpu_emulator.mem_read))
 
+        # Re-read a section only when this step stored into it. Untouched
+        # sections keep the version of the previous step.
+        for section in writable_sections:
+            if written_in(step_accesses, section):
+                contents = read_section(cpu_emulator.mem_read, section)
+                if contents != section_versions[section_ids[section.name]]:
+                    section_versions.append(contents)
+                    section_ids[section.name] = len(section_versions) - 1
+        section_states.append(dict(section_ids))
+
         if (is_bl and not library_call) or is_blr:
             # The actual destination PC identifies the called function.
             labels = address_to_labels.get(next_pc, [])
@@ -415,6 +455,8 @@ def record_register_states(
         {'versions': heap.snapshots, 'chunks': heap.chunks},
         library_calls,
         pointer_states,
+        section_states,
+        section_versions,
     )
 
 def main():
