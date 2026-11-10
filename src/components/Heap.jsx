@@ -1,8 +1,6 @@
-const CELL_BYTES = 8;
+import { formatNumber } from "../numberFormat";
 
-function formatAddress(address, memoryFormat) {
-    return memoryFormat === "hex" ? "0x" + address.toString(16) : address.toString(10);
-}
+const CELL_BYTES = 8;
 
 function allocationCells(allocation, writes) {
     const { address, size, contents } = allocation;
@@ -22,22 +20,22 @@ function allocationCells(allocation, writes) {
     return cells;
 }
 
-function CellContents({ cell, memoryFormat }) {
+function CellContents({ cell, dataFormat }) {
     const initialized = cell.bytes.filter((byte) => byte !== "??");
     if (initialized.length === 0) return "[empty]";
 
     // Pack the known bytes in little-endian order without padding gaps.
     const value = BigInt("0x" + initialized.reverse().join(""));
-    const text = memoryFormat === "hex" ? "0x" + value.toString(16).toUpperCase() : value.toString();
+    const text = formatNumber(value, dataFormat);
     const partial = initialized.length < cell.bytes.length;
     return (
         <span title={partial ? "Only initialized bytes are included" : undefined}>
-            {cell.written ? <mark>{text}</mark> : text}
+            {text}
         </span>
     );
 }
 
-export default function Heap({ allocations = [], memoryFormat = "hex", memoryAccesses = [] }) {
+export default function Heap({ allocations = [], formats, memoryAccesses = [] }) {
     const writes = memoryAccesses.filter((access) => access.kind === "write");
 
     return (
@@ -46,31 +44,35 @@ export default function Heap({ allocations = [], memoryFormat = "hex", memoryAcc
 
             <div className="stack-labels">
                 <span>Address</span>
-                <span>Value</span>
+                <span>Data</span>
             </div>
 
             <div className="heap-bar">
                 {allocations.length === 0 && <p className="heap-empty">No active allocations</p>}
                 {allocations.map((allocation) => {
-                    const address = formatAddress(allocation.address, memoryFormat);
+                    const address = formatNumber(allocation.address, formats.address);
                     return (
                         <fieldset className="memory-frame heap-allocation" key={allocation.address}>
                             <legend className="frame-header">
                                 <span className="frame-heading">
-                                    <span className="frame-title" title={address}>{address}</span>
-                                    <span className="frame-size">{allocation.size} B</span>
+                                    <span className="frame-title address-value" title={address}>{address}</span>
+                                    <span className="frame-size">{formatNumber(allocation.size, formats.data)} B</span>
                                 </span>
                             </legend>
 
                             <div className="heap-contents">
                                 {allocation.size === 0 && <span>[empty]</span>}
                                 {allocationCells(allocation, writes).map((cell) => (
-                                    <div className="memory-cell heap-cell" key={cell.address} title={cell.bytes.length + " B"}>
-                                        <span className="heap-cell-address">
-                                            {formatAddress(cell.address, memoryFormat)}
+                                    <div
+                                        className={`memory-cell heap-cell${cell.written ? " memory-written" : ""}`}
+                                        key={cell.address}
+                                        title={formatNumber(cell.bytes.length, formats.data) + " B"}
+                                    >
+                                        <span className="heap-cell-address address-value">
+                                            {formatNumber(cell.address, formats.address)}
                                         </span>
                                         <span className="heap-values">
-                                            <CellContents cell={cell} memoryFormat={memoryFormat} />
+                                            <CellContents cell={cell} dataFormat={formats.data} />
                                         </span>
                                     </div>
                                 ))}

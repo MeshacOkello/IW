@@ -3,7 +3,7 @@ import MemoryFrame from "./MemoryFrame";
 export default function Stack({
     stackValues,
     frameValues,
-    memoryFormat = "hex",
+    formats,
     stackPointer,
     memoryAccesses = [],
 }) {
@@ -25,7 +25,7 @@ export default function Stack({
 
             <div className="stack-labels">
                 <span>Address</span>
-                <span>Value</span>
+                <span>Data</span>
             </div>
 
             <div className="stack-bar">
@@ -39,7 +39,7 @@ export default function Stack({
                         cells={cells.filter((cell) =>
                             cell.address >= frame.stack_start && cell.address < frame.stack_end
                         )}
-                        memoryFormat={memoryFormat}
+                        formats={formats}
                         memoryAccesses={memoryAccesses}
                         stackPointer={stackPointer}
                         isActive={frame.isActive}

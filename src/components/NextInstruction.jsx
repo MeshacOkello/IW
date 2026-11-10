@@ -1,8 +1,12 @@
+import NumberText from "./NumberText";
+
 export default function NextInstruction({
     assemblyCode,
     currentLine,
     isLoaded,
     explanation,
+    explanationParts,
+    formats,
 }) {
     let instruction = "Load a program to begin.";
 
@@ -26,7 +30,7 @@ export default function NextInstruction({
             <span>Executed Instruction</span>
             <h5>{instruction}</h5>
             {isLoaded && currentLine != null && explanation && (
-                <h5>{explanation}</h5>
+                <h5><NumberText parts={explanationParts} fallback={explanation} formats={formats} /></h5>
             )}
         </div>
     );

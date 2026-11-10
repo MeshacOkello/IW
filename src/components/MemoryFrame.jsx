@@ -1,3 +1,5 @@
+import { formatNumber } from "../numberFormat";
+
 const PIXELS_PER_BYTE = 2.6;
 
 export default function MemoryFrame({
@@ -6,29 +8,25 @@ export default function MemoryFrame({
     size,
     colorIndex,
     cells,
-    memoryFormat,
+    formats,
     memoryAccesses = [],
     stackPointer,
     isActive = false,
 }) {
     const hue = (colorIndex * 137.508) % 360;
 
-    function formatAddress(address) {
-        return memoryFormat === "hex" ? "0x" + address.toString(16) : address.toString(10);
-    }
-
     return (
         <fieldset
             className={`memory-frame${isActive ? " active-frame" : ""}`}
             style={{
-                "--frame-color": `hsl(${hue}, 55%, 35%)`,
-                "--frame-background": `hsl(${hue}, 65%, 93%)`,
+                "--frame-color": `light-dark(hsl(${hue}, 55%, 35%), hsl(${hue}, 55%, 72%))`,
+                "--frame-background": `light-dark(hsl(${hue}, 65%, 93%), hsl(${hue}, 25%, 19%))`,
             }}
         >
             <legend className="frame-header">
                 <span className="frame-heading">
                     <span className="frame-title" title={title}>{label}</span>
-                    <span className="frame-size">{size} B</span>
+                    <span className="frame-size">{formatNumber(size, formats.data)} B</span>
                 </span>
             </legend>
 
@@ -40,20 +38,20 @@ export default function MemoryFrame({
                             access.address < cell.address + cell.size &&
                             cell.address < access.address + access.size
                     );
-                    const address = formatAddress(cell.address);
-                    const value = cell.value ?? "[empty]";
+                    const address = formatNumber(cell.address, formats.address);
+                    const value = cell.value == null ? "[empty]" : formatNumber(cell.value, formats.data);
                     return (
                         <div
                             className={`memory-cell${written ? " memory-written" : ""}`}
                             key={cell.address}
                             style={{ height: cell.size * PIXELS_PER_BYTE }}
-                            title={`${address} · ${cell.size} B · ${value}`}
+                            title={`${address} · ${formatNumber(cell.size, formats.data)} B · ${value}`}
                         >
                             <span className="stack-address">
                                 {cell.address === stackPointer && (
                                     <span className="sp-marker" title="Stack pointer">SP →</span>
                                 )}
-                                {address}
+                                <span className="address-value">{address}</span>
                             </span>
                             <span>{value}</span>
                         </div>

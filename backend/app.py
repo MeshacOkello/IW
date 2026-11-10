@@ -7,6 +7,19 @@ from simulator import run_program
 from instruction_explainer import explain_trace
 
 app = Flask(__name__)
+MAX_SAFE_INTEGER = (1 << 53) - 1
+
+
+def exact_display_values(registers, stack):
+    # Keep the numeric trace contract while supplying exact integers to JS.
+    exact = {
+        'registers': {index: str(value) for index, value in enumerate(registers) if value > MAX_SAFE_INTEGER},
+        'stack': {
+            cell['address']: str(cell['value']) for cell in stack
+            if cell['value'] is not None and cell['value'] > MAX_SAFE_INTEGER
+        },
+    }
+    return exact if any(exact.values()) else None
 
 
 @app.route('/simulate', methods=["POST"])
@@ -26,18 +39,22 @@ def simulate():
             heap_states,
             heap_allocations,
             library_calls,
+            pointer_states,
         ) = run_program(program)
-    except (AssemblyError, HeapError, UcError) as error:
+    except HeapError as error:
+        return jsonify(error=str(error), error_parts=error.parts), 400
+    except (AssemblyError, UcError) as error:
         return jsonify(error=str(error)), 400
 
     executed_statements = [program.instructions[address] for address in executed_addresses[1:]]
     executed_lines = [None] + [statement.line for statement in executed_statements]
-    explanations = explain_trace(
+    explanations, explanation_parts = explain_trace(
         executed_statements,
         register_states,
         stack_states,
         memory_accesses,
         library_calls,
+        pointer_states,
     )
 
     response = {
@@ -47,6 +64,9 @@ def simulate():
         'instruction_numbers': instruction_numbers,
         'executed_lines': executed_lines,
         'explanations': explanations,
+        'explanation_parts': explanation_parts,
+        'pointer_states': pointer_states,
+        'exact_values': [exact_display_values(regs, stack) for regs, stack in zip(register_states, stack_states)],
         'frame_states': frame_states,
         'memory_accesses': memory_accesses,
         'heap_states': heap_states,

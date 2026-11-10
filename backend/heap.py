@@ -11,7 +11,14 @@ LIBRARY_SYMBOLS = {'malloc': 0x410000, 'free': 0x410004}
 
 
 class HeapError(ValueError):
-    pass
+    def __init__(self, *parts):
+        self.parts = parts
+        super().__init__(''.join(
+            part if isinstance(part, str) else (
+                hex(int(part['value'])) if part['kind'] == 'address' else part['value']
+            )
+            for part in parts
+        ))
 
 
 @dataclass
@@ -69,9 +76,10 @@ class Heap:
             return
         allocation = self.active.pop(address, None)
         if allocation is None:
+            pointer = {'kind': 'address', 'value': str(address)}
             if address in self.freed_starts and self.allocation_at(address) is None:
-                raise HeapError(f'double free at {address:#x}')
-            raise HeapError(f'invalid free at {address:#x}; expected the start of a live allocation')
+                raise HeapError('double free at ', pointer)
+            raise HeapError('invalid free at ', pointer, '; expected the start of a live allocation')
 
         self.starts.pop(bisect_left(self.starts, address))
         self.freed_starts.add(address)
@@ -113,7 +121,10 @@ class Heap:
         problem = 'out-of-bounds heap access'
         if allocation is None and 0 <= offset < HEAP_SIZE and self.freed[offset]:
             problem = 'use-after-free'
-        raise HeapError(f'{problem}: {size}-byte {kind} at {address:#x}')
+        raise HeapError(
+            f'{problem}: ', {'kind': 'data', 'value': str(size)},
+            f'-byte {kind} at ', {'kind': 'address', 'value': str(address)},
+        )
 
     def snapshot(self, read_memory):
         active_snapshots = []

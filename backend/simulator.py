@@ -6,6 +6,8 @@ import unicorn.arm64_const as reg
 
 from assembler import STACK_START, STACK_END, TEXT_START, assemble_program, page_size
 from heap import HEAP_SIZE, HEAP_START, LIBRARY_SYMBOLS, Heap, HeapError
+from instruction_parser import parse_instruction
+from pointer_registers import PC as PC_INDEX, SP as SP_INDEX, pointer_registers_after
 
 LIBRARY_TARGETS = {address: name for name, address in LIBRARY_SYMBOLS.items()}
 
@@ -73,7 +75,7 @@ def run_program(program):
     for label, address in program.symbols.items():
         if address in program.instructions:
             address_to_labels.setdefault(address, []).append(label)
-    return record_register_states(cpu_emulator, program.instructions, address_to_labels)
+    return record_register_states(cpu_emulator, program.instructions, address_to_labels, program.symbols)
 
 
 # The stack is tracked as a sorted list of non-overlapping cells
@@ -218,8 +220,11 @@ def record_register_states(
     cpu_emulator,
     instructions,
     address_to_labels,
+    symbols,
 ):
     register_states = []
+    pointer_states = [[SP_INDEX, PC_INDEX]]
+    parsed_instructions = {pc: parse_instruction(statement.text) for pc, statement in instructions.items()}
     executed_addresses = []
     instruction_number = [None]
     stack_states = []
@@ -341,7 +346,7 @@ def record_register_states(
             else:
                 cpu_emulator.emu_start(PC, stopping_address, count=1)
         except HeapError as error:
-            raise HeapError(f'Line {instructions[PC].line}: {error}') from error
+            raise HeapError(f'Line {instructions[PC].line}: ', *error.parts) from error
         except UcError as error:
             # Unicorn may try to fetch the branch destination before it
             # returns from a single step. Record the branch, then let the
@@ -354,9 +359,12 @@ def record_register_states(
         next_pc = cpu_emulator.reg_read(reg.UC_ARM64_REG_PC)
 
         memory_accesses.append(list(step_accesses))
-        register_states.append(
-            read_all_registers_and_write_to_list(cpu_emulator)
-        )
+        after = read_all_registers_and_write_to_list(cpu_emulator)
+        register_states.append(after)
+        pointer_states.append(pointer_registers_after(
+            pointer_states[-1], instruction, parsed_instructions[PC], symbols, after,
+            link=is_bl or is_blr, library_call=library_call,
+        ))
 
         stack_cells = update_stack_cells(
             stack_cells,
@@ -406,6 +414,7 @@ def record_register_states(
         heap_states,
         {'versions': heap.snapshots, 'chunks': heap.chunks},
         library_calls,
+        pointer_states,
     )
 
 def main():

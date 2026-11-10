@@ -5,8 +5,7 @@ export default function MemoryPanel({
     stackValues,
     heapAllocations,
     frameValues,
-    memoryFormat,
-    setMemoryFormat,
+    formats,
     stackPointer,
     memoryAccesses,
 }) {
@@ -15,30 +14,19 @@ export default function MemoryPanel({
             <div className="memory-header">
                 <h5>Memory</h5>
 
-                <div className="memory-options">
-                    <select
-                        value={memoryFormat}
-                        onChange={(event) =>
-                            setMemoryFormat(event.target.value)
-                        }
-                    >
-                        <option value="hex">Hex</option>
-                        <option value="dec">Dec</option>
-                    </select>
-                </div>
             </div>
 
             <div className="memory-columns">
                 <Stack
                     stackValues={stackValues}
                     frameValues={frameValues}
-                    memoryFormat={memoryFormat}
+                    formats={formats}
                     stackPointer={stackPointer}
                     memoryAccesses={memoryAccesses}
                 />
                 <Heap
                     allocations={heapAllocations}
-                    memoryFormat={memoryFormat}
+                    formats={formats}
                     memoryAccesses={memoryAccesses}
                 />
             </div>

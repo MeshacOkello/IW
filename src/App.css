@@ -22,11 +22,34 @@ body {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  --address-color: light-dark(#275f85, #7db8df);
 }
 
-.assembly-visualizer > h1 {
+.visualizer-header,
+.number-formats,
+.number-formats label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.visualizer-header {
   flex-shrink: 0;
+  flex-wrap: wrap;
+  justify-content: space-between;
+}
+
+.visualizer-header h1 {
   margin: 0;
+}
+
+.number-formats {
+  flex-wrap: wrap;
+  font-size: 14px;
+}
+
+.address-value {
+  color: var(--address-color);
 }
 
 .workspace {
@@ -175,7 +198,7 @@ body {
 }
 
 .editor-backdrop .active-line {
-  background-color: lightgray;
+  background-color: light-dark(lightgray, #353844);
 }
 
 .editor-container .assembly-input {
@@ -368,12 +391,6 @@ body {
   text-align: right;
 }
 
-.heap-values mark {
-  color: #372d12;
-  background: #ffe49a;
-  font-weight: bold;
-}
-
 .heap-empty {
   margin: 8px;
   font-size: 13px;
@@ -482,6 +499,6 @@ body {
   color: #333;
 }
 .memory-frame .memory-cell.memory-written {
-  background-color: lightgray;
+  background-color: light-dark(lightgray, #353844);
   font-weight: bold;
 }
