@@ -2,7 +2,10 @@ import { formatNumber } from "../numberFormat";
 import { cellValue, memoryCells } from "../memoryCells";
 import VirtualRows from "./VirtualRows";
 
-const ROW_HEIGHT = 22;
+// Addresses and their contents get the room; a label is only a marker.
+const CELL_HEIGHT = 20;
+const LABEL_HEIGHT = 15;
+const rowHeight = (row) => (row.kind === "label" ? LABEL_HEIGHT : CELL_HEIGHT);
 const ESCAPES = { 0: "\\0", 9: "\\t", 10: "\\n", 13: "\\r", 34: '\\"', 92: "\\\\" };
 
 // Bytes a string directive produced read as text, with whatever cannot be
@@ -100,7 +103,7 @@ export default function Section({ name, section, formats, memoryAccesses = [] })
                 <VirtualRows
                     className="section-bar"
                     rows={rows}
-                    rowHeight={ROW_HEIGHT}
+                    rowHeight={rowHeight}
                     renderRow={renderRow}
                 />
             )}

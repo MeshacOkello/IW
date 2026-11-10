@@ -240,7 +240,7 @@ body {
   min-height: 140px;
   display: flex;
   flex-direction: column;
-  padding: 12px;
+  padding: 8px 10px 10px;
   border: 1px solid lightgray;
   border-radius: 3px;
 }
@@ -249,7 +249,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 12px;
+  margin-bottom: 8px;
 }
 
 .register-header h5 {
@@ -272,11 +272,11 @@ body {
   table-layout: fixed;
   width: 100%;
   border-collapse: separate;
-  border-spacing: 0 6px;
+  border-spacing: 0 3px;
 }
 
 .register-tables td {
-  padding: 3px 6px;
+  padding: 2px 6px;
   border: 1px solid lightgray;
   font-family: monospace;
   text-align: left;
@@ -384,9 +384,16 @@ body {
 
 .section-region > h5 {
   flex-shrink: 0;
-  margin: 0 0 4px;
+  margin: 0;
   font-family: var(--mono);
+  font-size: 13px;
+  line-height: 18px;
   text-align: center;
+}
+
+.section-region .stack-labels {
+  padding: 1px 6px 3px;
+  font-size: 11px;
 }
 
 .section-bar {
@@ -415,7 +422,7 @@ body {
   padding: 0 6px;
   border: none;
   border-bottom: 1px solid lightgray;
-  line-height: 16px;
+  line-height: 15px;
 }
 
 .section-cell .address-value {
@@ -434,7 +441,7 @@ body {
   border-bottom: 1px solid lightgray;
   background: var(--code-bg);
   color: var(--text-h);
-  font: 600 12px/1 var(--mono);
+  font: 600 11px/1 var(--mono);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
