@@ -332,6 +332,48 @@ body {
   margin-top: auto;
 }
 
+.heap-bar {
+  gap: 8px;
+  padding-block: 6px;
+}
+
+.heap-allocation {
+  --frame-color: var(--text);
+  --frame-background: var(--bg);
+}
+
+.heap-allocation .frame-heading {
+  flex-wrap: wrap;
+  gap: 0 8px;
+}
+
+.heap-contents {
+  padding-block: 4px 8px;
+  color: var(--text-h);
+  font: 13px/1.5 var(--mono);
+  text-align: left;
+}
+
+.memory-frame .heap-cell {
+  padding-block: 3px;
+}
+
+.memory-frame .heap-cell span {
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.heap-values {
+  text-align: right;
+}
+
+.heap-values mark {
+  color: #372d12;
+  background: #ffe49a;
+  font-weight: bold;
+}
+
 .heap-empty {
   margin: 8px;
   font-size: 13px;
@@ -373,7 +415,7 @@ body {
   line-height: 16px;
 }
 
-/* Stack frames and heap allocations */
+/* Memory frames */
 
 .memory-frame {
   box-sizing: border-box;
