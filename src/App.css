@@ -371,14 +371,9 @@ body {
 }
 
 .heap-contents {
-  padding-block: 4px 8px;
   color: var(--text-h);
   font: 13px/1.5 var(--mono);
   text-align: left;
-}
-
-.memory-frame .heap-cell {
-  padding-block: 3px;
 }
 
 .memory-frame .heap-cell span {
@@ -424,7 +419,10 @@ body {
   white-space: nowrap;
 }
 
-/* Heights come from the cell's byte size in MemoryFrame.jsx. */
+.frame-cells,
+.memory-frame .memory-cell {
+  height: calc(var(--byte-count) * var(--memory-byte-height));
+}
 
 .memory-frame .memory-cell {
   padding-block: 0;
@@ -435,6 +433,7 @@ body {
 /* Memory frames */
 
 .memory-frame {
+  --memory-byte-height: 2.6px;
   box-sizing: border-box;
   display: block;
   flex: 0 0 auto;

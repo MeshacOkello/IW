@@ -66,6 +66,7 @@ export default function Heap({ allocations = [], formats, memoryAccesses = [] })
                                     <div
                                         className={`memory-cell heap-cell${cell.written ? " memory-written" : ""}`}
                                         key={cell.address}
+                                        style={{ "--byte-count": cell.bytes.length }}
                                         title={formatNumber(cell.bytes.length, formats.data) + " B"}
                                     >
                                         <span className="heap-cell-address address-value">

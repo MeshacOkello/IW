@@ -1,7 +1,5 @@
 import { formatNumber } from "../numberFormat";
 
-const PIXELS_PER_BYTE = 2.6;
-
 export default function MemoryFrame({
     label,
     title,
@@ -30,7 +28,7 @@ export default function MemoryFrame({
                 </span>
             </legend>
 
-            <div className="frame-cells" style={{ height: size * PIXELS_PER_BYTE }}>
+            <div className="frame-cells" style={{ "--byte-count": size }}>
                 {cells.map((cell) => {
                     const written = cell.written ?? memoryAccesses.some(
                         (access) =>
@@ -44,7 +42,7 @@ export default function MemoryFrame({
                         <div
                             className={`memory-cell${written ? " memory-written" : ""}`}
                             key={cell.address}
-                            style={{ height: cell.size * PIXELS_PER_BYTE }}
+                            style={{ "--byte-count": cell.size }}
                             title={`${address} · ${formatNumber(cell.size, formats.data)} B · ${value}`}
                         >
                             <span className="stack-address">
