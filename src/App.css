@@ -82,15 +82,31 @@ body {
 .execution-controls {
   display: flex;
   flex-shrink: 0;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: 6px 8px;
   margin-bottom: 12px;
 }
 
 .execution-controls button {
   padding: 8px 12px;
   cursor: pointer;
+}
+
+.run-speed {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.run-speed input {
+  width: 50px;
+  padding: 4px 2px 4px 4px;
+  font: inherit;
+  text-align: right;
 }
 
 .next-instruction {

@@ -6,6 +6,7 @@ import MemoryPanel from "./MemoryPanel";
 import Section from "./Section";
 import NumberText from "./NumberText";
 import { useState, useEffect } from "react";
+import { DEFAULT_RUN_DELAY, runDelayFrom } from "../runSpeed";
 
 function registerSnapshot(history, index) {
     const registers = history?.register_states[index];
@@ -24,6 +25,7 @@ mul x5, x3, x2`);
     const [loadError, setLoadError] = useState(null);
     const [stepIndex, setStepIndex] = useState(0);
     const [isRunning, setIsRunning] = useState(false);
+    const [runDelay, setRunDelay] = useState(String(DEFAULT_RUN_DELAY));
     const [addressFormat, setAddressFormat] = useState("hex");
     const [dataFormat, setDataFormat] = useState("dec");
     const formats = { address: addressFormat, data: dataFormat };
@@ -106,10 +108,10 @@ mul x5, x3, x2`);
             const nextStep = stepIndex + 1;
             setStepIndex(nextStep);
             if (nextStep === lastStep) setIsRunning(false);
-        }, 900);
+        }, runDelayFrom(runDelay));
 
         return () => clearTimeout(timer);
-    }, [stepIndex, isRunning, history]);
+    }, [stepIndex, isRunning, history, runDelay]);
 
     return(
         <div className="assembly-visualizer">
@@ -135,7 +137,7 @@ mul x5, x3, x2`);
             
             <div className="workspace">
                 <div className="code-panel">
-                    <ExecutionControls onLoad={handleLoad} onNext = {handleNext} onBack={handleBack} onReset={handleReset} currentStep={stepIndex} totalSteps={history ? history.register_states.length - 1 : 0} onRun={handleRun} isRunning = {isRunning}/>
+                    <ExecutionControls onLoad={handleLoad} onNext = {handleNext} onBack={handleBack} onReset={handleReset} currentStep={stepIndex} totalSteps={history ? history.register_states.length - 1 : 0} onRun={handleRun} isRunning = {isRunning} runDelay={runDelay} onRunDelayChange={setRunDelay}/>
 
                     {loadError && (
                         <p role="alert">
