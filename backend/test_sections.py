@@ -13,7 +13,7 @@ class SectionSimulationTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200, response.get_json())
         trace = response.get_json()
         for key, series in trace.items():
-            if key not in ('heap_allocations', 'sections'):
+            if key not in ('heap_allocations', 'sections', 'stdout', 'status', 'run_settings'):
                 self.assertEqual(len(series), len(trace['register_states']))
         return trace
 

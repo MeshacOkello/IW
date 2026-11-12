@@ -3,6 +3,7 @@ from unicorn import UcError
 
 from assembler import AssemblyError, assemble_program
 from heap import HeapError
+from library_io import InputProtocolError
 from simulator import run_program
 from instruction_explainer import explain_trace
 
@@ -52,7 +53,16 @@ def section_layout(program):
 @app.route('/simulate', methods=["POST"])
 def simulate():
     data = request.get_json()
-    assembly_code = data["assembly_code"]
+    if not isinstance(data, dict) or not isinstance(data.get('assembly_code'), str):
+        return jsonify(error='assembly_code must be a string', status={'state': 'error', 'phase': 'request'}), 400
+    assembly_code = data['assembly_code']
+    input_events = data.get('input_events', [])
+    execution_limit = data.get('execution_limit', 10_000)
+    if (not isinstance(input_events, list) or len(input_events) > 10_000
+            or any(not isinstance(event, dict) for event in input_events)):
+        return jsonify(error='input_events must be a list of input submissions', status={'state': 'error', 'phase': 'request'}), 400
+    if type(execution_limit) is not int or not 1 <= execution_limit <= 10_000:
+        return jsonify(error='execution_limit must be an integer from 1 to 10000', status={'state': 'error', 'phase': 'request'}), 400
     try:
         program = assemble_program(assembly_code)
 
@@ -69,11 +79,14 @@ def simulate():
             pointer_states,
             section_states,
             section_versions,
-        ) = run_program(program)
+            stdout_states,
+            stdout,
+            status,
+        ) = run_program(program, input_events, execution_limit)
     except HeapError as error:
-        return jsonify(error=str(error), error_parts=error.parts), 400
-    except (AssemblyError, UcError) as error:
-        return jsonify(error=str(error)), 400
+        return jsonify(error=str(error), error_parts=error.parts, status={'state': 'error'}), 400
+    except (AssemblyError, InputProtocolError, UcError) as error:
+        return jsonify(error=str(error), status={'state': 'error'}), 400
 
     executed_statements = [program.instructions[address] for address in executed_addresses[1:]]
     executed_lines = [None] + [statement.line for statement in executed_statements]
@@ -102,6 +115,12 @@ def simulate():
         'heap_allocations': heap_allocations,
         'sections': {'layout': section_layout(program), 'versions': section_versions},
         'section_states': section_states,
+        'stdout_states': stdout_states,
+        'stdout': stdout,
+        'status': status,
+        'run_settings': {'execution_limit': execution_limit},
     }
 
-    return jsonify(response)
+    if status['state'] == 'error':
+        response.update(error=status['error'], error_parts=status.get('error_parts'))
+    return jsonify(response), 400 if status['state'] == 'error' else 200

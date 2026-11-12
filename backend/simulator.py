@@ -7,6 +7,7 @@ import unicorn.arm64_const as reg
 from assembler import STACK_START, STACK_END, TEXT_START, assemble_program, page_size
 from heap import HEAP_SIZE, HEAP_START, LIBRARY_SYMBOLS, Heap, HeapError
 from instruction_parser import parse_instruction
+from library_io import InputProtocolError, LibraryMemory, Stdio, WaitingForInput
 from pointer_registers import PC as PC_INDEX, SP as SP_INDEX, pointer_registers_after
 
 LIBRARY_TARGETS = {address: name for name, address in LIBRARY_SYMBOLS.items()}
@@ -65,7 +66,7 @@ def written_in(accesses, section):
     )
 
 
-def run_program(program):
+def run_program(program, input_events=None, execution_limit=10_000):
     cpu_emulator = Uc(UC_ARCH_ARM64, UC_MODE_ARM)
     cpu_emulator.reg_write(reg.UC_ARM64_REG_NZCV, 0)
 
@@ -95,6 +96,10 @@ def run_program(program):
     ]
     return record_register_states(
         cpu_emulator, program.instructions, address_to_labels, program.symbols, data_sections,
+        input_events or [], execution_limit,
+        [(section.address, section.address + section.size, section.name in ('.data', '.bss'))
+         for section in program.sections if section.size]
+        + [(STACK_START, STACK_END, True), (HEAP_START, HEAP_START + HEAP_SIZE, True)],
     )
 
 
@@ -241,7 +246,10 @@ def record_register_states(
     instructions,
     address_to_labels,
     symbols,
-    data_sections=(),
+    data_sections,
+    input_events,
+    execution_limit,
+    memory_regions,
 ):
     register_states = []
     pointer_states = [[SP_INDEX, PC_INDEX]]
@@ -256,6 +264,9 @@ def record_register_states(
     heap = Heap()
     heap_states = [[]]
     library_calls = {}
+    stdio = Stdio(input_events)
+    stdout_states = [0]
+    status = None
     # Sections follow the heap's bookkeeping: each step names the version of
     # every section, and a version is only added when its bytes change.
     section_versions = []
@@ -290,8 +301,21 @@ def record_register_states(
         record_access,
     )
 
+    def record_library_access(kind, address, size):
+        access = UC_MEM_WRITE if kind == 'write' else None
+        record_access(cpu_emulator, access, address, size, 0, None)
+        if kind == 'write' and STACK_START <= address < STACK_END:
+            record_write(cpu_emulator, access, address, size, 0, None)
+
+    library_memory = LibraryMemory(cpu_emulator, heap, memory_regions, record_library_access)
+
+    def library_argument(index):
+        if index < 8:
+            return cpu_emulator.reg_read(registers[f'x{index}'])
+        sp = cpu_emulator.reg_read(reg.UC_ARM64_REG_SP)
+        return int.from_bytes(library_memory.read(sp + (index - 8) * 8, 8), 'little')
+
     counter = 0
-    execution_limit = 10_000
     instruction_indices = {pc: index for index, pc in enumerate(sorted(instructions), start=1)}
     PC = next(iter(instruction_indices), TEXT_START)
     stopping_address = max(instructions, default=TEXT_START) + 4
@@ -368,26 +392,45 @@ def record_register_states(
                 argument = cpu_emulator.reg_read(reg.UC_ARM64_REG_X0)
                 if library_call == 'malloc':
                     cpu_emulator.reg_write(reg.UC_ARM64_REG_X0, heap.malloc(argument))
-                else:
+                elif library_call == 'free':
                     heap.free(argument)
+                else:
+                    context = {
+                        'function': library_call, 'line': instructions[PC].line,
+                        'address': PC, 'step': counter,
+                        'occurrence': f'{counter}:{PC:x}:{library_call}',
+                    }
+                    result = stdio.call(library_call, library_argument, library_memory, context)
+                    if library_call in ('fgets', 'getchar', 'scanf'):
+                        stdio.prompt_start = len(stdio.output)
+                    cpu_emulator.reg_write(reg.UC_ARM64_REG_X0, result)
                 cpu_emulator.reg_write(reg.UC_ARM64_REG_X30, PC + 4)
                 cpu_emulator.reg_write(reg.UC_ARM64_REG_PC, PC + 4)
                 library_calls[PC] = library_call
             else:
                 cpu_emulator.emu_start(PC, stopping_address, count=1)
+        except WaitingForInput as waiting:
+            status = {'state': 'waiting', 'pending': waiting.pending}
+            break
         except HeapError as error:
-            raise HeapError(f'Line {instructions[PC].line}: ', *error.parts) from error
+            annotated = HeapError(f'Line {instructions[PC].line}: ', *error.parts)
+            status = {'state': 'error', 'error': str(annotated), 'error_parts': annotated.parts,
+                      'line': instructions[PC].line}
+            break
         except UcError as error:
             # Unicorn may try to fetch the branch destination before it
             # returns from a single step. Record the branch, then let the
             # instruction map stop execution at the destination.
             target = cpu_emulator.reg_read(reg.UC_ARM64_REG_PC)
             if error.errno not in (UC_ERR_FETCH_PROT, UC_ERR_FETCH_UNMAPPED) or target in instructions:
-                raise
+                status = {'state': 'error', 'error': f'Line {instructions[PC].line}: {error}',
+                          'line': instructions[PC].line}
+                break
 
         new_sp = cpu_emulator.reg_read(reg.UC_ARM64_REG_SP)
         next_pc = cpu_emulator.reg_read(reg.UC_ARM64_REG_PC)
 
+        stdout_states.append(len(stdio.output))
         memory_accesses.append(list(step_accesses))
         after = read_all_registers_and_write_to_list(cpu_emulator)
         register_states.append(after)
@@ -444,6 +487,11 @@ def record_register_states(
         PC = next_pc
         counter += 1
 
+    if stdio.event_index != len(input_events):
+        raise InputProtocolError('input contains submissions beyond the requested execution occurrence')
+    if status is None:
+        status = {'state': 'execution_limit' if counter >= execution_limit and PC in instructions else 'completed'}
+
     return (
         register_states,
         stack_states,
@@ -457,6 +505,9 @@ def record_register_states(
         pointer_states,
         section_states,
         section_versions,
+        stdout_states,
+        {'chunks': stdio.output, 'encoding': 'utf-8'},
+        status,
     )
 
 def main():

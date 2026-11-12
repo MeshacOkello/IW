@@ -7,7 +7,10 @@ HEAP_SIZE = 0x4000
 HEAP_END = HEAP_START + HEAP_SIZE
 HEAP_ALIGNMENT = 16
 SNAPSHOT_CHUNK_SIZE = 256
-LIBRARY_SYMBOLS = {'malloc': 0x410000, 'free': 0x410004}
+LIBRARY_SYMBOLS = {
+    name: 0x410000 + index * 4
+    for index, name in enumerate(('malloc', 'free', 'printf', 'puts', 'putchar', 'getchar', 'fgets', 'scanf'))
+}
 
 
 class HeapError(ValueError):

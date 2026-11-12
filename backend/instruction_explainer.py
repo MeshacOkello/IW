@@ -731,6 +731,19 @@ def explain_heap_call(call, argument, result, numbers):
         if result == 0:
             return f"malloc could not allocate {numbers.data(argument)} bytes. It returns NULL in x0."
         return f"malloc allocates {numbers.data(argument)} bytes at {numbers.address(result)} and returns the address in x0."
+    if call == 'fgets':
+        if result == 0:
+            return "fgets reached EOF before reading any bytes and returns NULL in x0."
+        return f"fgets writes a null-terminated input string at {numbers.address(result)} and returns that address in x0."
+    if call == 'scanf':
+        count = result if result < (1 << 31) else result - (1 << 32)
+        return f"scanf returns {numbers.data(count)} in w0 after attempting one integer conversion."
+    if call == 'getchar':
+        if result == 0xffffffff:
+            return "getchar reached EOF and returns EOF in w0."
+        return f"getchar consumes one input byte and returns {numbers.data(result)} in w0."
+    if call in ('printf', 'puts', 'putchar'):
+        return f"{call} writes to stdout and returns {numbers.data(result)} in w0."
     if argument == 0:
         return "free(NULL) leaves the heap unchanged."
     return f"free releases the allocation at {numbers.address(argument)}."

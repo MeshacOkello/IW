@@ -164,7 +164,7 @@ end: nop''')
                 self.assertIn(diagnostic, response.get_json()['error'])
 
     def test_no_other_undefined_library_symbols_resolve(self):
-        response = self.client.post('/simulate', json={'assembly_code': 'bl printf'})
+        response = self.client.post('/simulate', json={'assembly_code': 'bl gets'})
         self.assertEqual(response.status_code, 400)
         self.assertIn('symbol', response.get_json()['error'])
 

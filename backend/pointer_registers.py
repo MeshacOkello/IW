@@ -22,9 +22,9 @@ def pointer_registers_after(before, word, parsed, symbols, after, *, link, libra
     destination = word & 31
     if link:
         pointers.add(30)
-        if library_call == 'malloc':
+        if library_call and library_call != 'free':
             pointers.discard(0)
-            if after[0]:
+            if library_call in ('malloc', 'fgets') and after[0]:
                 pointers.add(0)
     elif word & 0x1F000000 == 0x10000000:  # ADR / ADRP
         if destination != 31:
