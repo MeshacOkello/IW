@@ -89,19 +89,119 @@ def source_line_text(source, line):
     return lines[line - 1].strip() or None
 
 
+# Below this, a name is too short for a near-miss to mean anything: "l" is
+# within one edit of bl, b and lsl alike, so offering any of them is a guess.
+SHORTEST_CORRECTABLE = 3
+
+
 def closest(word, candidates, cutoff=0.7):
     """The likeliest intended spelling of `word`, or None.
 
-    A transposition is the most common typing slip and difflib does not
-    favour it, so a candidate built from exactly the same letters wins over a
-    merely similar one: "mvo" is far more likely to be "mov" than "mvn".
+    Only a genuine near-miss earns a suggestion: the name has to be long
+    enough for the resemblance to mean something, and within one character of
+    the length of the candidate. A transposition is the most common typing
+    slip and difflib does not favour it, so a candidate built from exactly the
+    same letters wins over a merely similar one: "mvo" is far more likely to
+    be "mov" than "mvn".
     """
     lowered = word.lower()
-    matches = difflib.get_close_matches(lowered, sorted(candidates), n=5, cutoff=cutoff)
+    if len(lowered) < SHORTEST_CORRECTABLE:
+        return None
+    matches = [
+        match for match in difflib.get_close_matches(lowered, sorted(candidates), n=5, cutoff=cutoff)
+        if abs(len(match) - len(lowered)) <= 1
+    ]
     if not matches:
         return None
     letters = sorted(lowered)
     return next((match for match in matches if sorted(match) == letters), matches[0])
+
+
+def syntax_message(statement_text):
+    """The one message for a line the assembler cannot make an instruction of.
+
+    A failure to parse, bad operands, an operand the assembler cannot resolve
+    and an encoding that produces nothing are all the same thing to a student
+    reading their own line: the syntax is wrong. Naming the low-level reason
+    would be guessing at which of them it was.
+    """
+    match = MNEMONIC.match(statement_text.strip()) if statement_text else None
+    mnemonic = match[1].lower() if match else None
+    if mnemonic and not mnemonic.startswith('.'):
+        return f'Wrong syntax. AArch64 does not allow the operands of "{mnemonic}" in this form.'
+    return 'Wrong syntax. This line is not a valid AArch64 instruction.'
+
+
+REGISTER = re.compile(r'(?<![\w.$])([xw])(\d+)(?![\w.$])', re.ASCII | re.IGNORECASE)
+
+
+def invalid_register(statement_text, defined_labels=()):
+    """A register the line names that AArch64 does not have, if there is one.
+
+    x0-x30 and w0-w30 are the general-purpose registers; x31 is not written as
+    a number at all, it is spelled sp or xzr depending on the instruction.
+    """
+    body = statement_text.split(None, 1)
+    operands = body[1] if len(body) == 2 else ''
+    known = {label.lower() for label in defined_labels}
+    for match in REGISTER.finditer(operands):
+        digits = match[2]
+        # A name the program defines is a label, whatever it looks like.
+        if match[0].lower() in known:
+            continue
+        if int(digits) > 30 or (len(digits) > 1 and digits[0] == '0'):
+            return match[0]
+    return None
+
+
+# Instructions whose register operands must all be the same width. The loads,
+# stores and extends deliberately mix x and w, so they are not listed.
+SAME_WIDTH_OPERANDS = {
+    'mov', 'mvn', 'neg', 'negs', 'add', 'adds', 'sub', 'subs', 'cmp', 'cmn',
+    'mul', 'madd', 'msub', 'mneg', 'sdiv', 'udiv', 'and', 'ands', 'orr', 'orn',
+    'eor', 'eon', 'tst', 'bic', 'lsl', 'lsr', 'asr', 'ror', 'csel', 'csinc',
+}
+REGISTER_WIDTH = re.compile(r'(?<![\w.$])([xw])(?:\d+|zr)(?![\w.$])', re.ASCII | re.IGNORECASE)
+
+
+def mismatched_register_widths(statement_text):
+    """True when a line mixes x and w registers where both must match.
+
+    Memory operands are left alone: "ldr w0, [x1]" is correct, since the
+    address is always 64-bit while the value loaded need not be.
+    """
+    parts = statement_text.split(None, 1)
+    if len(parts) != 2 or parts[0].lower() not in SAME_WIDTH_OPERANDS:
+        return False
+    operands = parts[1]
+    if '[' in operands:
+        return False
+    widths = {match[1].lower() for match in REGISTER_WIDTH.finditer(operands)}
+    return widths == {'x', 'w'}
+
+
+def instruction_failure(statement_text, defined_labels=()):
+    """Message and advice for a line the assembler could not encode.
+
+    Keystone reports an operand it cannot resolve the same way as one that is
+    malformed, so an undefined name is looked for here rather than trusted to
+    the error code: "mov x2, n" is a missing "n", not bad syntax.
+    """
+    register = invalid_register(statement_text, defined_labels)
+    if register:
+        return (f'"{register}" is not an AArch64 register.',
+                'The general-purpose registers are x0 to x30, or w0 to w30 for their '
+                '32-bit halves, plus sp and xzr.')
+    if mismatched_register_widths(statement_text):
+        return ('Mismatched register sizes.',
+                'Use x registers for 64-bit values and w registers for their 32-bit '
+                'halves, but not both in one instruction.')
+    name = undefined_symbol(statement_text, defined_labels)
+    if name:
+        alternative = closest(name, defined_labels, cutoff=0.6)
+        return (f'The label "{name}" is used here but never defined.',
+                f'Did you mean "{alternative}"?' if alternative else None)
+    return syntax_message(statement_text), None
 
 
 def code_of(error, table):
@@ -143,19 +243,13 @@ def describe_keystone_error(error, statement_text=None, defined_labels=()):
 
     if code == 'KS_ERR_ASM_SYMBOL_MISSING':
         name = undefined_symbol(statement_text, defined_labels)
-        if name:
-            message = f'The label "{name}" is used here but never defined.'
-            alternative = closest(name, defined_labels, cutoff=0.6)
-            suggestion = f'Did you mean "{alternative}"?' if alternative else None
-        else:
-            message = 'This line refers to a label that is never defined.'
-            suggestion = None
+        if not name:
+            return 'This line refers to a label that is never defined.', None, ASSEMBLY
+        message, suggestion = instruction_failure(statement_text, defined_labels)
         return message, suggestion, ASSEMBLY
 
     if code == 'KS_ERR_ASM_INVALIDOPERAND':
-        subject = f'the operands of "{mnemonic}"' if mnemonic else 'the operands on this line'
-        return (f'Wrong syntax. AArch64 does not allow {subject} in this form.',
-                None, ASSEMBLY)
+        return (*instruction_failure(statement_text, defined_labels), ASSEMBLY)
 
     if code == 'KS_ERR_ASM_SYMBOL_REDEFINED':
         return 'This label is defined more than once.', None, ASSEMBLY
@@ -182,7 +276,7 @@ def describe_keystone_error(error, statement_text=None, defined_labels=()):
     if code in ('KS_ERR_ASM_EXPR_TOKEN', 'KS_ERR_ASM_EXPR_BRACKET',
                 'KS_ERR_ASM_RPAREN', 'KS_ERR_ASM_TOKEN_INVALID',
                 'KS_ERR_ASM_STAT_TOKEN'):
-        return 'Wrong syntax. This line could not be parsed.', None, ASSEMBLY
+        return (*instruction_failure(statement_text, defined_labels), ASSEMBLY)
 
     if code in ('KS_ERR_ASM_INSN_UNSUPPORTED', 'KS_ERR_ASM_UNSUPPORTED',
                 'KS_ERR_ASM_MISSINGFEATURE', 'KS_ERR_ASM_ARCH',
@@ -195,8 +289,9 @@ def describe_keystone_error(error, statement_text=None, defined_labels=()):
                 'KS_ERR_ASM_MACRO_STR', 'KS_ERR_ASM_MACRO_TOKEN'):
         return 'Assembler macros are not supported.', None, UNSUPPORTED
 
-    # An unmapped Keystone code: say what is certain and keep the code as detail.
-    return 'The assembler rejected this line.', None, ASSEMBLY
+    # An unmapped Keystone code. What is certain is that the line is wrong, so
+    # report it at the same level as every other syntax failure.
+    return (*instruction_failure(statement_text, defined_labels), ASSEMBLY)
 
 
 def undefined_symbol(statement_text, defined_labels):
@@ -211,7 +306,11 @@ def undefined_symbol(statement_text, defined_labels):
         # Registers, condition codes and shifts are not labels.
         if re.fullmatch(r'[xw]\d+|[xw]zr|sp|wsp|lr|pc', lowered):
             continue
-        if lowered in ('lsl', 'lsr', 'asr', 'ror', 'uxtb', 'uxth', 'uxtw', 'sxtb', 'sxth', 'sxtw'):
+        if lowered in ('lsl', 'lsr', 'asr', 'ror', 'uxtb', 'uxth', 'uxtw',
+                       'sxtb', 'sxth', 'sxtw', 'uxtx', 'sxtx', 'msl'):
+            continue
+        if lowered in ('eq', 'ne', 'cs', 'hs', 'cc', 'lo', 'mi', 'pl', 'vs', 'vc',
+                       'hi', 'ls', 'ge', 'lt', 'gt', 'le', 'al', 'nv'):
             continue
         if lowered in known:
             continue
@@ -372,7 +471,10 @@ def legacy_parts(error):
 __all__ = [
     'ASSEMBLY', 'INTERNAL', 'INTERNAL_MESSAGE', 'REQUEST', 'RUNTIME', 'UNSUPPORTED',
     'KsError', 'UcError', 'assembly_error', 'closest', 'describe_keystone_error',
-    'describe_unicorn_error', 'heap_suggestion', 'legacy_parts', 'legacy_text',
+    'describe_unicorn_error', 'heap_suggestion', 'instruction_failure',
+    'invalid_register', 'mismatched_register_widths',
+    'legacy_parts', 'legacy_text',
+    'syntax_message',
     'payload', 'region_name',
     'render', 'runtime_error', 'source_line_text', 'undefined_symbol',
 ]

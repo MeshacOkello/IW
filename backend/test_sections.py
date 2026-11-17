@@ -318,7 +318,7 @@ ret""")
             '.bss\n.asciz "text"': ('only reserves zeroed space', 'assembly'),
             '.data\nnop': ('belong in .text', 'assembly'),
             '.section .custom\n.byte 0': ('not a section the simulator provides', 'unsupported'),
-            '.byte 1\nnop': ('aligned', 'assembly'),
+            '.byte 1\nnop': ('4-byte boundary', 'assembly'),
             '.space 28672\nnop': ('reserves for instructions', 'assembly'),
             '.include "file"': ('not a directive the simulator supports', 'unsupported'),
         }

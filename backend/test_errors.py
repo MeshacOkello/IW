@@ -283,6 +283,95 @@ done: nop
         error = self.error(self.simulate('loop: nop\nb lopo\n'))
         self.assertEqual(error['suggestion'], 'Did you mean "loop"?')
 
+    def test_every_syntax_failure_reports_at_the_same_level(self):
+        # These fail inside Keystone for different low-level reasons, and in
+        # one case produce no output at all. To a student reading their own
+        # line they are one thing, so they are reported as one thing.
+        expected = ('Wrong syntax. AArch64 does not allow the operands of "mov" '
+                    'in this form.')
+        for line in ('mov x2,', 'mov x2,7,4', 'mov x2', 'mov',
+                     'mov ,x2', 'mov x2, ,', 'mov x0, #'):
+            with self.subTest(line=line):
+                error = self.error(self.simulate(f'mov x1, #20\n{line}\n'))
+                self.assertEqual(error['kind'], 'assembly')
+                self.assertEqual(error['line'], 2)
+                self.assertEqual(error['message'], expected)
+                self.assertNotIn('suggestion', error)
+        # A problem the simulator genuinely knows is still named.
+        self.assertIn('not an AArch64 instruction',
+                      self.error(self.simulate('nop\nzzz x2, #5\n'))['message'])
+        self.assertIn('never defined',
+                      self.error(self.simulate('nop\nb nowhere\n'))['message'])
+        self.assertIn('4-byte boundary',
+                      self.error(self.simulate('.byte 1\nnop\n'))['message'])
+        self.assert_still_usable()
+
+    def test_a_failed_line_names_the_real_problem_when_it_can(self):
+        # Keystone reports an unresolved operand and a malformed one the same
+        # way, so these are recognised here rather than left as "wrong syntax".
+        cases = {
+            'mov x1, #20\nmov x2,n\n': 'The label "n" is used here but never defined.',
+            'mov x1, #20\nmov x2,g\n': 'The label "g" is used here but never defined.',
+            '.data\nv: .word missing\n.text\nnop\n':
+                'The label "missing" is used here but never defined.',
+            'mov x32, #5\n': '"x32" is not an AArch64 register.',
+            'add w64, w1, w2\n': '"w64" is not an AArch64 register.',
+            'ldr x0, [x44]\n': '"x44" is not an AArch64 register.',
+        }
+        for source, expected in cases.items():
+            with self.subTest(source=source):
+                self.assertEqual(self.error(self.simulate(source))['message'], expected)
+        self.assert_still_usable()
+
+    def test_mixed_register_widths_are_named_as_such(self):
+        for source in ('mov x0, w1\n', 'add x0, x1, w2\n', 'cmp w0, x1\n',
+                       'mov x0, wzr\n', 'orr w0, w1, x2\n'):
+            with self.subTest(source=source):
+                error = self.error(self.simulate(source))
+                self.assertEqual(error['message'], 'Mismatched register sizes.')
+                self.assertIn('not both in one instruction', error['suggestion'])
+        # Loads, stores and extends mix the two on purpose.
+        for source in ('.data\nv: .word 1\n.text\nadr x0, v\nldr w1, [x0]\n',
+                       'mov w0, #-1\nsxtw x1, w0\n',
+                       '.data\nv: .word 1\n.text\nadr x0, v\nstrb w1, [x0]\n'):
+            with self.subTest(source=source):
+                self.assertEqual(self.simulate(source).status_code, 200)
+        self.assert_still_usable()
+
+    def test_a_name_the_program_defines_is_never_called_undefined(self):
+        # Every place a name can come from: this section, another section, a
+        # constant, and the library symbols.
+        for source in ('.data\nn: .word 1\n.text\nmov x2, n, n\n',
+                       'here: nop\nmov x2, here, here\n',
+                       '.equ N, 5\nmov x1, x2, N\n',
+                       'mov x0, printf, x1\n',
+                       '.rodata\nmsg: .asciz "hi"\n.text\nmov x2, msg, msg\n',
+                       'cmp x0, #1\ncsel x0, x1, x2, eq, eq\n',
+                       'add x0, x1, x2, lsl #2, lsl\n',
+                       '.data\nx32: .word 1\n.text\nmov x2, x32, x32\n'):
+            with self.subTest(source=source):
+                message = self.error(self.simulate(source))['message']
+                self.assertIn('Wrong syntax', message)
+                self.assertNotIn('never defined', message)
+                self.assertNotIn('not an AArch64 register', message)
+
+    def test_a_correction_is_offered_only_for_a_genuine_near_miss(self):
+        offered = {
+            'nop\nmvo x2, #5\n': 'Did you mean "mov"?',
+            'nop\nmovv x2, #5\n': 'Did you mean "mov"?',
+            'loop: nop\nb lopo\n': 'Did you mean "loop"?',
+            'total: nop\nmov x2, totl\n': 'Did you mean "total"?',
+        }
+        for source, advice in offered.items():
+            with self.subTest(source=source):
+                self.assertEqual(self.error(self.simulate(source))['suggestion'], advice)
+        # Too short, or too far, for the resemblance to mean anything: "l" is
+        # within one edit of bl, b and lsl alike.
+        for source in ('nop\nl x0, #5\n', 'nop\nm x0, #5\n', 'nop\nad x0, x1, x2\n',
+                       'nop\nzzz x2, #5\n', 'loop: nop\nb lp\n'):
+            with self.subTest(source=source):
+                self.assertNotIn('suggestion', self.error(self.simulate(source)))
+
     def test_advice_is_given_only_when_it_is_derived_from_the_error(self):
         # A checklist of things to look at is not an explanation, so a message
         # the simulator cannot add anything certain to stands on its own.

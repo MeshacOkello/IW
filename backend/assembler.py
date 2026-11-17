@@ -5,7 +5,9 @@ from dataclasses import dataclass
 
 from keystone import KS_ARCH_ARM64, KS_MODE_LITTLE_ENDIAN, Ks, KsError
 
-from errors import ASSEMBLY, UNSUPPORTED, describe_keystone_error
+from errors import (
+    ASSEMBLY, UNSUPPORTED, describe_keystone_error, instruction_failure,
+)
 from heap import LIBRARY_SYMBOLS
 from instruction_parser import parse_number
 
@@ -306,6 +308,12 @@ class NoMachineCode(Exception):
     """Keystone returned no bytes without reporting an error."""
 
 
+def defined_name(text):
+    """The name an ".equ name, value" line defines, if it is one."""
+    parts = text.split(None, 1)
+    return parts[1].split(',', 1)[0].strip() if len(parts) == 2 else None
+
+
 @dataclass(frozen=True)
 class Probe:
     """What a failed section needs in order to re-assemble one line at a time."""
@@ -313,6 +321,28 @@ class Probe:
     constants: tuple[Statement, ...]
     statements: tuple[Statement, ...]
     labels: tuple[str, ...]
+
+    def known_names(self):
+        """Every name this section can resolve: its own labels, the symbols
+        imported from other sections and the library, and the constants.
+
+        A name absent from this set is genuinely undefined, which is what lets
+        a failed line say so instead of blaming its syntax."""
+        names = set(self.labels)
+        for line in self.external_lines:
+            names.add(defined_name(line))
+        for statement in self.constants:
+            names.add(defined_name(statement.text))
+        # A section's own .equ lines travel as ordinary statements, not in
+        # `constants`, so they are collected here too.
+        for statement in self.statements:
+            # A label-only statement carries no text.
+            head = statement.text.split(None, 1)[0].lower() if statement.text else ''
+            if head in ('.equ', '.set', '.equiv'):
+                names.add(defined_name(statement.text))
+            names.update(statement.labels)
+        names.discard(None)
+        return names
 
 
 def keystone_error(error, *, statement=None, context=None, defined_labels=()):
@@ -394,7 +424,7 @@ def assemble(assembler, lines, address, context, *, probe=None, statement=None):
             return data
         failure = NoMachineCode()
 
-    labels = probe.labels if probe else ()
+    labels = probe.known_names() if probe else ()
     if probe is not None and statement is None:
         located, error = locate_assembly_error(assembler, probe, address)
         if located is not None:
@@ -435,9 +465,8 @@ def encode_address_instruction(assembler, statement, pc, target):
         address = pc
     encoded = assemble(assembler, [text], address, None, statement=statement)
     if len(encoded) != 4:
-        raise AssemblyError(
-            'This line assembled to more than one instruction.', line=statement.line,
-            suggestion='Write one instruction per line.')
+        message, suggestion = instruction_failure(statement.text)
+        raise AssemblyError(message, line=statement.line, suggestion=suggestion)
     return encoded
 
 
@@ -497,6 +526,7 @@ def assemble_section(assembler, name, address, statements, constants, externals,
     lines.append('.ltorg')
     lines.extend(f'.quad {marker}' for marker in markers)
     probe = Probe(tuple(external_lines), tuple(constants), tuple(statements), tuple(labels))
+    known = probe.known_names()
     output = assemble(assembler, lines, address, name, probe=probe)
     size = len(output) - 8 * len(markers)
     if not 0 <= size <= MAX_SECTION_SIZE:
@@ -511,10 +541,23 @@ def assemble_section(assembler, name, address, statements, constants, externals,
     instructions = {}
     for start, (statement, end, expression_marker, needs_encoding) in sites.items():
         pc, end = values[start], values[end]
-        if pc % 4 or end - pc != 4 or not address <= pc < end <= address + size:
+        in_section = address <= pc < end <= address + size
+        if pc % 4 and in_section:
+            # Not the line's own syntax: data before it pushed it off a word
+            # boundary, and AArch64 can only execute aligned instructions.
             raise AssemblyError(
-                'This line did not assemble to one aligned AArch64 instruction.',
-                line=statement.line, suggestion='Write one instruction per line.')
+                'This instruction does not start on a 4-byte boundary, because of the '
+                'data placed before it in .text.', line=statement.line,
+                suggestion='Put ".align 2" before it, or move the data to .data or .rodata.')
+        if end - pc > 4 and in_section:
+            raise AssemblyError(
+                f'"{statement.text.split(None, 1)[0].lower()}" expands to more than one '
+                'machine instruction, which the simulator cannot step through.',
+                line=statement.line, kind=UNSUPPORTED,
+                suggestion='Write the instructions it expands to yourself, one per line.')
+        if end - pc != 4 or not in_section:
+            message, suggestion = instruction_failure(statement.text, known)
+            raise AssemblyError(message, line=statement.line, suggestion=suggestion)
         instructions[pc] = statement
         if needs_encoding:
             target = values.get(expression_marker)
