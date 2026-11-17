@@ -161,7 +161,8 @@ body {
 .code-editor {
   flex: 1;
   min-width: 0;
-  min-height: 0;
+  /* Keep a usable editor even when an error message shares the panel. */
+  min-height: 120px;
   display: flex;
   flex-direction: column;
   padding: 12px;
@@ -740,4 +741,115 @@ body {
 
 .stdin-actions button {
   padding: 6px 10px;
+}
+
+/* --- error reporting ------------------------------------------------------ */
+
+.assembly-visualizer {
+  --error-program: light-dark(#a3301c, #f0907e);
+  --error-program-bg: light-dark(#fdf1ef, #2c1b18);
+  --error-program-border: light-dark(#e7b4a9, #6c382e);
+  --error-tool: light-dark(#7a5b16, #e0bd6a);
+  --error-tool-bg: light-dark(#fbf5e6, #2a2418);
+  --error-tool-border: light-dark(#ddc68c, #6a5a30);
+}
+
+.error-message {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--error-program-border);
+  border-left-width: 3px;
+  border-radius: 4px;
+  background: var(--error-program-bg);
+  text-align: left;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* A problem in the simulator or in the request is not the program's fault,
+   so it is toned differently from an error in the student's code. */
+.error-request,
+.error-internal,
+.error-network {
+  border-color: var(--error-tool-border);
+  background: var(--error-tool-bg);
+}
+
+.error-message p {
+  margin: 0;
+}
+
+.error-headline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.error-kind {
+  font: 600 11px/1.4 var(--sans);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--error-program);
+}
+
+.error-request .error-kind,
+.error-internal .error-kind,
+.error-network .error-kind {
+  color: var(--error-tool);
+}
+
+.error-location {
+  font: 11px/1.4 var(--mono);
+  color: var(--text);
+}
+
+.error-source {
+  margin: 0;
+  padding: 4px 8px;
+  overflow-x: auto;
+  border-radius: 3px;
+  background: var(--code-bg);
+  font: 12px/1.5 var(--mono);
+  color: var(--text-h);
+  white-space: pre;
+}
+
+.error-text {
+  color: var(--text-h);
+}
+
+.error-suggestion,
+.error-detail {
+  color: var(--text);
+}
+
+.error-detail {
+  font: 11px/1.5 var(--mono);
+}
+
+/* A long error must not squeeze the editor out of the panel. */
+.code-panel > .error-message {
+  flex: 0 0 auto;
+  max-height: 35%;
+  overflow: auto;
+  margin-bottom: 12px;
+}
+
+.code-panel {
+  overflow: auto;
+}
+
+/* The status strip is sized for one line; an error needs its own height. */
+.simulation-status:has(.error-message) {
+  flex: 0 0 auto;
+  align-items: stretch;
+}
+
+.stdin-dialog .error-message {
+  font-size: 13px;
 }

@@ -221,7 +221,8 @@ format:.asciz "%ld"'''
         for fmt in ('%f', '%lld', '%02d', '%.2d', '%ls', '%hhu', '%*d', '%n', '%'):
             with self.subTest(fmt=fmt):
                 trace = self.simulate(f'adr x0,format\nbl printf\n.rodata\nformat:.asciz "{fmt}"', code=400)
-                self.assertIn('unsupported', trace['error'])
+                self.assertEqual(trace['error_info']['kind'], 'unsupported')
+                self.assertRegex(trace['error'], 'printf (conversion|format)')
                 self.assertEqual(trace['status']['state'], 'error')
                 self.assertEqual(trace['executed_lines'], [None, 1])
                 self.assertEqual(output(trace), '')

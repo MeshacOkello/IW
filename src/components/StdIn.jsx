@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
+import ErrorMessage from "./ErrorMessage";
 
-export default function StdIn({ prompt, busy, error, onSubmit, onClose, returnFocusRef, fallbackFocusRef }) {
+export default function StdIn({ prompt, busy, error, formats, onSubmit, onClose, returnFocusRef, fallbackFocusRef }) {
     const dialog = useRef(null);
     const input = useRef(null);
     const [text, setText] = useState("");
@@ -33,7 +34,7 @@ export default function StdIn({ prompt, busy, error, onSubmit, onClose, returnFo
                 <label className="visually-hidden" htmlFor="stdin-text">Program input</label>
                 <textarea id="stdin-text" ref={input} value={text} rows={2}
                     onChange={(event) => setText(event.target.value)} disabled={busy} />
-                {error && <p role="alert">{error}</p>}
+                {error && <ErrorMessage error={error} formats={formats} />}
                 <div className="stdin-actions">
                     <button type="submit" disabled={busy} title="Send text without a newline, then end input">Submit</button>
                 </div>

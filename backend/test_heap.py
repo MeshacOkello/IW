@@ -166,7 +166,11 @@ end: nop''')
     def test_no_other_undefined_library_symbols_resolve(self):
         response = self.client.post('/simulate', json={'assembly_code': 'bl gets'})
         self.assertEqual(response.status_code, 400)
-        self.assertIn('symbol', response.get_json()['error'])
+        error = response.get_json()['error_info']
+        self.assertEqual(error['kind'], 'assembly')
+        self.assertEqual(error['line'], 1)
+        self.assertIn('"gets" is used here but never defined', error['message'])
+        self.assertIn('KS_ERR_ASM_SYMBOL_MISSING', error['detail'])
 
 
 if __name__ == '__main__':

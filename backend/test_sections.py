@@ -221,7 +221,15 @@ mov x1, #12'''
             with self.subTest(source=source):
                 response = self.client.post('/simulate', json={'assembly_code': source})
                 self.assertEqual(response.status_code, 400)
-                self.assertIn('UC_ERR_WRITE_PROT', response.get_json()['error'])
+                error = response.get_json()['error_info']
+                self.assertEqual(error['kind'], 'runtime')
+                self.assertEqual(error['detail'], 'UC_ERR_WRITE_PROT')
+                self.assertEqual(error['line'], 2)
+                self.assertIn('read-only memory', error['message'])
+                # The faulting address is reported as data, for either base.
+                self.assertIn({'kind': 'address', 'value': str(
+                    assemble_program(source).symbols.get('literal', 0x1000))},
+                    error['message_parts'])
 
     def test_legacy_stack_and_call_trace(self):
         source = '''entry: mov x0, #41
@@ -301,25 +309,33 @@ ret""")
 
     def test_invalid_inputs_have_assembly_errors(self):
         cases = {
-            'adr x0, missing': 'symbol',
-            'adrp x0, #7': 'unaligned',
-            '.data\nfoo: .zero 1048576\n.rodata\ntarget: .byte 1\n.text\nadr x0, target': 'out of range',
-            '.data\nfoo: .byte 0\n.text\nfoo: nop': 'duplicate label',
-            '.bss\n.space 2, 1': 'zero-filled',
-            '.bss\n.asciz "text"': 'zero-filled',
-            '.data\nnop': 'belong in .text',
-            '.section .custom\n.byte 0': 'unsupported section',
-            '.byte 1\nnop': 'aligned',
-            '.space 28672\nnop': 'below the stack',
-            '.include "file"': 'unsupported directive',
+            'adr x0, missing': ('never defined', 'assembly'),
+            'adrp x0, #7': ('out of range or unaligned', 'assembly'),
+            '.data\nfoo: .zero 1048576\n.rodata\ntarget: .byte 1\n.text\nadr x0, target':
+                ('out of range or unaligned', 'assembly'),
+            '.data\nfoo: .byte 0\n.text\nfoo: nop': ('defined more than once', 'assembly'),
+            '.bss\n.space 2, 1': ('zero-filled', 'assembly'),
+            '.bss\n.asciz "text"': ('only reserves zeroed space', 'assembly'),
+            '.data\nnop': ('belong in .text', 'assembly'),
+            '.section .custom\n.byte 0': ('not a section the simulator provides', 'unsupported'),
+            '.byte 1\nnop': ('aligned', 'assembly'),
+            '.space 28672\nnop': ('reserves for instructions', 'assembly'),
+            '.include "file"': ('not a directive the simulator supports', 'unsupported'),
         }
-        for source, error in cases.items():
+        for source, (error, kind) in cases.items():
             with self.subTest(source=source):
                 with self.assertRaisesRegex(AssemblyError, error):
                     assemble_program(source)
                 response = self.client.post('/simulate', json={'assembly_code': source})
                 self.assertEqual(response.status_code, 400)
-                self.assertRegex(response.get_json()['error'], error)
+                body = response.get_json()
+                self.assertRegex(body['error'], error)
+                self.assertEqual(body['error_info']['kind'], kind)
+                self.assertEqual(body['status'], {
+                    'state': 'error', 'kind': kind,
+                    **({'line': body['error_info']['line']}
+                       if 'line' in body['error_info'] else {}),
+                })
 
 
 if __name__ == '__main__':

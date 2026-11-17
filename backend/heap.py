@@ -14,8 +14,17 @@ LIBRARY_SYMBOLS = {
 
 
 class HeapError(ValueError):
-    def __init__(self, *parts):
+    """A memory fault the simulator detected itself.
+
+    `parts` keeps addresses as data so the frontend can show them in the
+    student's chosen base. `kind` is the error taxonomy from errors.py:
+    'runtime' for a fault in the program, 'unsupported' for a library feature
+    the simulator does not provide.
+    """
+
+    def __init__(self, *parts, kind='runtime'):
         self.parts = parts
+        self.kind = kind
         super().__init__(''.join(
             part if isinstance(part, str) else (
                 hex(int(part['value'])) if part['kind'] == 'address' else part['value']

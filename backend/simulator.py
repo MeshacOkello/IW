@@ -1,9 +1,12 @@
 from unicorn import (
     Uc, UcError, UC_ARCH_ARM64, UC_MODE_ARM, UC_HOOK_MEM_WRITE, UC_HOOK_MEM_READ,
-    UC_ERR_FETCH_PROT, UC_ERR_FETCH_UNMAPPED, UC_MEM_WRITE, UC_PROT_READ, UC_PROT_WRITE, UC_PROT_EXEC,
+    UC_HOOK_MEM_INVALID, UC_ERR_FETCH_PROT, UC_ERR_FETCH_UNMAPPED, UC_MEM_WRITE,
+    UC_MEM_READ_UNMAPPED, UC_MEM_READ_PROT, UC_MEM_WRITE_UNMAPPED, UC_MEM_WRITE_PROT,
+    UC_PROT_READ, UC_PROT_WRITE, UC_PROT_EXEC,
 )
 import unicorn.arm64_const as reg
 
+import errors
 from assembler import STACK_START, STACK_END, TEXT_START, assemble_program, page_size
 from heap import HEAP_SIZE, HEAP_START, LIBRARY_SYMBOLS, Heap, HeapError
 from instruction_parser import parse_instruction
@@ -11,6 +14,39 @@ from library_io import InputProtocolError, LibraryMemory, Stdio, WaitingForInput
 from pointer_registers import PC as PC_INDEX, SP as SP_INDEX, pointer_registers_after
 
 LIBRARY_TARGETS = {address: name for name, address in LIBRARY_SYMBOLS.items()}
+
+# A runaway recursion never returns, and every recorded step keeps a snapshot
+# of every live call, so an uncapped depth makes the trace grow with the square
+# of the step count. The simulated stack is 4 KiB, which a real recursive
+# function exhausts well before this depth.
+MAX_CALL_DEPTH = 256
+
+
+def error_status(error):
+    """Wrap a structured error as a trace status, keeping the flat fields."""
+    status = {'state': 'error', 'error_info': error, 'error': errors.legacy_text(error)}
+    parts = errors.legacy_parts(error)
+    if parts:
+        status['error_parts'] = parts
+    if error.get('line') is not None:
+        status['line'] = error['line']
+    return status
+
+
+# Named for messages, so a fault can say which region an address lands in.
+def memory_region_names(program):
+    return tuple(
+        [(section.address, section.address + section.size, section.name)
+         for section in program.sections if section.size]
+        + [(STACK_START, STACK_END, 'the stack'), (HEAP_START, HEAP_START + HEAP_SIZE, 'the heap')]
+    )
+
+
+# The invalid-access kinds Unicorn reports, mapped to the word used in messages.
+FAULT_KINDS = {
+    UC_MEM_READ_UNMAPPED: 'read', UC_MEM_READ_PROT: 'read',
+    UC_MEM_WRITE_UNMAPPED: 'write', UC_MEM_WRITE_PROT: 'write',
+}
 
 # Dictionary that maps register name to its Unicorn register identifier (just for simplicity)
 registers = {
@@ -100,6 +136,7 @@ def run_program(program, input_events=None, execution_limit=10_000):
         [(section.address, section.address + section.size, section.name in ('.data', '.bss'))
          for section in program.sections if section.size]
         + [(STACK_START, STACK_END, True), (HEAP_START, HEAP_START + HEAP_SIZE, True)],
+        memory_region_names(program),
     )
 
 
@@ -250,6 +287,7 @@ def record_register_states(
     input_events,
     execution_limit,
     memory_regions,
+    region_names=(),
 ):
     register_states = []
     pointer_states = [[SP_INDEX, PC_INDEX]]
@@ -301,6 +339,17 @@ def record_register_states(
         record_access,
     )
 
+    # An access Unicorn refuses never reaches the hook above, and UcError
+    # carries no address, so capture it here purely to describe the fault.
+    # Returning False leaves the error to propagate exactly as before.
+    fault = {}
+
+    def record_fault(uc, access, address, size, value, user_data):
+        fault.update(address=address, size=size, kind=FAULT_KINDS.get(access, 'fetch'))
+        return False
+
+    cpu_emulator.hook_add(UC_HOOK_MEM_INVALID, record_fault)
+
     def record_library_access(kind, address, size):
         access = UC_MEM_WRITE if kind == 'write' else None
         record_access(cpu_emulator, access, address, size, 0, None)
@@ -333,24 +382,20 @@ def record_register_states(
     }]
     next_frame_id = 1
 
+    # A caller's stack space ends where its callee entered, so every frame but
+    # the innermost is fixed once the next call is made. Those snapshots are
+    # built once and shared across steps; only the innermost is rebuilt.
+    settled_frames = []
+
+    def settle_frame(callee_entry_sp):
+        frame = active_frames[-1]
+        settled_frames.append(
+            dict(frame, stack_start=callee_entry_sp, stack_end=frame['entry_sp']))
+
     def snapshot_frames(current_sp):
-        snapshot = []
-
-        for index, frame in enumerate(active_frames):
-            saved_frame = frame.copy()
-
-            # A caller's stack space ends where its callee entered.
-            # The innermost function's space extends down to current SP.
-            if index + 1 < len(active_frames):
-                lower_address = active_frames[index + 1]['entry_sp']
-            else:
-                lower_address = current_sp
-
-            saved_frame['stack_start'] = lower_address
-            saved_frame['stack_end'] = frame['entry_sp']
-            snapshot.append(saved_frame)
-
-        return snapshot
+        frame = active_frames[-1]
+        innermost = dict(frame, stack_start=current_sp, stack_end=frame['entry_sp'])
+        return settled_frames[:len(active_frames) - 1] + [innermost]
 
     frame_states = [snapshot_frames(initial_sp)]
 
@@ -380,6 +425,7 @@ def record_register_states(
 
         stack_writes.clear()
         step_accesses.clear()
+        fault.clear()
 
         library_call = None
         if is_bl:
@@ -413,9 +459,11 @@ def record_register_states(
             status = {'state': 'waiting', 'pending': waiting.pending}
             break
         except HeapError as error:
-            annotated = HeapError(f'Line {instructions[PC].line}: ', *error.parts)
-            status = {'state': 'error', 'error': str(annotated), 'error_parts': annotated.parts,
-                      'line': instructions[PC].line}
+            message = errors.render(error.parts)
+            status = error_status(errors.runtime_error(
+                message, parts=error.parts, line=instructions[PC].line,
+                suggestion=errors.heap_suggestion(message), kind=error.kind,
+            ))
             break
         except UcError as error:
             # Unicorn may try to fetch the branch destination before it
@@ -423,8 +471,14 @@ def record_register_states(
             # instruction map stop execution at the destination.
             target = cpu_emulator.reg_read(reg.UC_ARM64_REG_PC)
             if error.errno not in (UC_ERR_FETCH_PROT, UC_ERR_FETCH_UNMAPPED) or target in instructions:
-                status = {'state': 'error', 'error': f'Line {instructions[PC].line}: {error}',
-                          'line': instructions[PC].line}
+                if error.errno in (UC_ERR_FETCH_PROT, UC_ERR_FETCH_UNMAPPED):
+                    fault.setdefault('address', target)
+                message, parts, suggestion, detail = errors.describe_unicorn_error(
+                    error, fault, region_names)
+                status = error_status(errors.runtime_error(
+                    message, parts=parts, line=instructions[PC].line,
+                    suggestion=suggestion, detail=detail,
+                ))
                 break
 
         new_sp = cpu_emulator.reg_read(reg.UC_ARM64_REG_SP)
@@ -466,6 +520,7 @@ def record_register_states(
             # The actual destination PC identifies the called function.
             labels = address_to_labels.get(next_pc, [])
 
+            settle_frame(new_sp)
             active_frames.append({
                 'id': next_frame_id,
                 'name': labels[0] if labels else f'function_{next_pc:x}',
@@ -478,14 +533,27 @@ def record_register_states(
             # Remove the call only if it returns to its expected caller.
             if next_pc == active_frames[-1]['return_address']:
                 active_frames.pop()
+                settled_frames.pop()
 
         frame_states.append(snapshot_frames(new_sp))
 
         executed_addresses.append(PC)
         instruction_number.append(instruction_indices[PC])
+        counter += 1
+
+        # A call that never returns would otherwise grow the trace without
+        # bound: stop with a reportable error and keep every step recorded.
+        if len(active_frames) > MAX_CALL_DEPTH:
+            status = error_status(errors.runtime_error(
+                f'The program is {MAX_CALL_DEPTH} calls deep and still has not returned.',
+                line=instructions[PC].line,
+                suggestion='A recursive function needs a base case that returns before '
+                           'calling itself again. Check the condition that should stop it.',
+                detail='call depth limit',
+            ))
+            break
 
         PC = next_pc
-        counter += 1
 
     if stdio.event_index != len(input_events):
         raise InputProtocolError('input contains submissions beyond the requested execution occurrence')

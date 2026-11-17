@@ -1,16 +1,77 @@
-from flask import Flask, request, jsonify
+import logging
+
+from flask import Flask, jsonify, request
+from werkzeug.exceptions import HTTPException
 from unicorn import UcError
 
-from assembler import AssemblyError, assemble_program
+import errors
+from assembler import AssemblyError
+from assembly_worker import AssemblyTimeout, assemble_in_worker, timeout_error
 from heap import HeapError
 from library_io import InputProtocolError
 from simulator import run_program
 from instruction_explainer import explain_trace
 
 app = Flask(__name__)
+logger = logging.getLogger(__name__)
 MAX_SAFE_INTEGER = (1 << 53) - 1
+MAX_SOURCE_BYTES = 1 << 20
+MAX_INPUT_EVENTS = 10_000
+EXECUTION_LIMIT = 10_000
 # The order the data sections are shown in. .text has no visualization.
 DISPLAYED_SECTIONS = ('.data', '.bss', '.rodata')
+
+
+def error_response(error, code):
+    """One JSON shape for every failure, with the flat fields kept for clients
+    that only read `error` and `error_parts`."""
+    body = {
+        'error': errors.legacy_text(error),
+        'error_parts': errors.legacy_parts(error),
+        'error_info': error,
+        'status': {'state': 'error', 'kind': error['kind']},
+    }
+    if error.get('line') is not None:
+        body['status']['line'] = error['line']
+    return jsonify(body), code
+
+
+def bad_request(message, *, suggestion=None):
+    return error_response(
+        errors.payload(errors.REQUEST, message, suggestion=suggestion), 400)
+
+
+@app.errorhandler(HTTPException)
+def handle_http_error(error):
+    """Answer a bad route, method or body with JSON, never an HTML page.
+
+    The frontend parses every response as JSON, so an HTML error page would
+    surface to the student as a parser error instead of the real problem.
+    """
+    messages = {
+        400: 'The request body was not valid JSON.',
+        404: 'There is no such endpoint on the simulator backend.',
+        405: 'That HTTP method is not allowed on this endpoint.',
+        413: 'The request body is too large.',
+        415: 'The request must be sent as JSON with Content-Type: application/json.',
+    }
+    message = messages.get(error.code) or error.description or 'The request could not be handled.'
+    payload = errors.payload(errors.REQUEST, message, detail=f'HTTP {error.code}')
+    return error_response(payload, error.code or 400)
+
+
+@app.errorhandler(Exception)
+def handle_unexpected_error(error):
+    """A bug in the simulator: log it in full, show the student a plain note.
+
+    The traceback stays on the server. The response says the program was not
+    at fault, so an internal failure is never reported as a student mistake.
+    """
+    logger.exception('Unhandled error while simulating: %s', error)
+    return error_response(errors.payload(
+        errors.INTERNAL, errors.INTERNAL_MESSAGE,
+        detail=type(error).__name__,
+    ), 500)
 
 
 def exact_display_values(registers, stack):
@@ -50,22 +111,75 @@ def section_layout(program):
     return layout
 
 
+def parse_body():
+    """Decode the request body, or say precisely how it was unreadable."""
+    if not request.is_json:
+        return None, 'The request must be sent as JSON with Content-Type: application/json.'
+    try:
+        data = request.get_json()
+    except HTTPException:
+        return None, 'The request body is not valid JSON.'
+    if not isinstance(data, dict):
+        return None, 'The request body must be a JSON object.'
+    return data, None
+
+
+def validate(data):
+    """Check the fields before any work. Returns a message, or None if valid."""
+    source = data.get('assembly_code')
+    if not isinstance(source, str):
+        return 'assembly_code must be a string', 'Send the editor contents as assembly_code.'
+    if len(source.encode('utf-8', errors='replace')) > MAX_SOURCE_BYTES:
+        return f'assembly_code must be at most {MAX_SOURCE_BYTES} bytes', None
+
+    events = data.get('input_events', [])
+    if (not isinstance(events, list) or len(events) > MAX_INPUT_EVENTS
+            or any(not isinstance(event, dict) for event in events)):
+        return 'input_events must be a list of input submissions', None
+
+    limit = data.get('execution_limit', EXECUTION_LIMIT)
+    if type(limit) is not int or not 1 <= limit <= EXECUTION_LIMIT:
+        return f'execution_limit must be an integer from 1 to {EXECUTION_LIMIT}', None
+    return None, None
+
+
+def safe_explanations(*arguments):
+    """Explanations are commentary: a bug in one must not discard the trace."""
+    try:
+        return explain_trace(*arguments)
+    except Exception:
+        logger.exception('Explanation failed; serving the trace without explanations')
+        steps = len(arguments[1])
+        return [None] * steps, [None] * steps
+
+
 @app.route('/simulate', methods=["POST"])
 def simulate():
-    data = request.get_json()
-    if not isinstance(data, dict) or not isinstance(data.get('assembly_code'), str):
-        return jsonify(error='assembly_code must be a string', status={'state': 'error', 'phase': 'request'}), 400
+    data, unreadable = parse_body()
+    if unreadable is not None:
+        return bad_request(unreadable)
+    message, suggestion = validate(data)
+    if message is not None:
+        return bad_request(message, suggestion=suggestion)
+
     assembly_code = data['assembly_code']
     input_events = data.get('input_events', [])
-    execution_limit = data.get('execution_limit', 10_000)
-    if (not isinstance(input_events, list) or len(input_events) > 10_000
-            or any(not isinstance(event, dict) for event in input_events)):
-        return jsonify(error='input_events must be a list of input submissions', status={'state': 'error', 'phase': 'request'}), 400
-    if type(execution_limit) is not int or not 1 <= execution_limit <= 10_000:
-        return jsonify(error='execution_limit must be an integer from 1 to 10000', status={'state': 'error', 'phase': 'request'}), 400
-    try:
-        program = assemble_program(assembly_code)
+    execution_limit = data.get('execution_limit', EXECUTION_LIMIT)
 
+    try:
+        # In a worker process: Keystone can hang on malformed source in native
+        # code, and a hang there must not take this backend with it.
+        program = assemble_in_worker(assembly_code)
+    except AssemblyError as error:
+        return error_response(errors.assembly_error(
+            error.message, line=error.line, source=assembly_code,
+            suggestion=error.suggestion, detail=error.detail,
+            kind=error.kind or errors.ASSEMBLY,
+        ), 400)
+    except AssemblyTimeout:
+        return error_response(timeout_error(), 400)
+
+    try:
         (
             register_states,
             stack_states,
@@ -83,14 +197,27 @@ def simulate():
             stdout,
             status,
         ) = run_program(program, input_events, execution_limit)
+    except InputProtocolError as error:
+        # The submitted input does not match the run being continued, so the
+        # trace cannot be rebuilt: this is a request problem, not a program bug.
+        return error_response(errors.payload(
+            errors.REQUEST, str(error),
+            suggestion='Load the program again to start a fresh run.',
+        ), 400)
     except HeapError as error:
-        return jsonify(error=str(error), error_parts=error.parts, status={'state': 'error'}), 400
-    except (AssemblyError, InputProtocolError, UcError) as error:
-        return jsonify(error=str(error), status={'state': 'error'}), 400
+        message = errors.render(error.parts)
+        return error_response(errors.runtime_error(
+            message, parts=error.parts, kind=error.kind,
+            suggestion=errors.heap_suggestion(message),
+        ), 400)
+    except UcError as error:
+        text, parts, suggestion, detail = errors.describe_unicorn_error(error, None, ())
+        return error_response(errors.runtime_error(
+            text, parts=parts, suggestion=suggestion, detail=detail), 400)
 
     executed_statements = [program.instructions[address] for address in executed_addresses[1:]]
     executed_lines = [None] + [statement.line for statement in executed_statements]
-    explanations, explanation_parts = explain_trace(
+    explanations, explanation_parts = safe_explanations(
         executed_statements,
         register_states,
         stack_states,
@@ -122,5 +249,13 @@ def simulate():
     }
 
     if status['state'] == 'error':
-        response.update(error=status['error'], error_parts=status.get('error_parts'))
+        # The steps recorded before the fault are still in the response, so the
+        # student can step through them and see the state that caused it.
+        error = status.get('error_info')
+        if error is not None:
+            error = dict(error, source_line=errors.source_line_text(assembly_code, error.get('line')))
+            status['error_info'] = {key: value for key, value in error.items() if value is not None}
+            status['kind'] = error['kind']
+        response.update(error=status['error'], error_parts=status.get('error_parts'),
+                        error_info=status.get('error_info'))
     return jsonify(response), 400 if status['state'] == 'error' else 200

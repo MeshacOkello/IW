@@ -101,11 +101,13 @@ def printf_parts(fmt):
             modifier = b'l'
             index += 1
         if index >= len(fmt):
-            raise LibraryError('unsupported or incomplete printf format')
+            raise LibraryError('The printf format string ends in the middle of a conversion.',
+                               kind='unsupported')
         conversion = modifier + bytes([fmt[index]])
         index += 1
         if conversion not in (b'd', b'u', b'ld', b'lu', b'c', b's', b'p'):
-            raise LibraryError('unsupported printf conversion or modifier')
+            raise LibraryError(
+                'This printf conversion is not one the simulator supports.', kind='unsupported')
         parts.append(conversion.decode('ascii'))
     if literal:
         parts.append(bytes(literal))
@@ -151,7 +153,7 @@ class Stdio:
 
     def emit(self, data):
         if self.output_size + len(data) > MAX_STREAM_BYTES:
-            raise LibraryError('simulated stdout exceeds 1 MiB')
+            raise LibraryError('simulated stdout exceeds 1 MiB', kind='unsupported')
         if data:
             self.output.append(data.hex())
             self.output_size += len(data)
@@ -177,7 +179,7 @@ class Stdio:
                     else:
                         output.extend(f'0x{value:x}'.encode('ascii'))
                 if len(output) > MAX_IO_BYTES:
-                    raise LibraryError('printf output exceeds 65536 bytes per call')
+                    raise LibraryError('printf output exceeds 65536 bytes per call', kind='unsupported')
             self.emit(output)
             return len(output)
         if name == 'puts':
@@ -196,7 +198,8 @@ class Stdio:
         if name == 'fgets':
             destination, count = argument(0), integer(argument(1), 32, True)
             if argument(2) != 0:
-                raise LibraryError('fgets supports simulated stdin only; pass x2 = 0')
+                raise LibraryError('fgets supports simulated stdin only; pass x2 = 0',
+                                   kind='unsupported')
             if not 1 <= count <= MAX_IO_BYTES:
                 raise LibraryError('fgets requires a buffer size from 1 to 65536')
             position = self.position
@@ -219,7 +222,9 @@ class Stdio:
             fmt = memory.c_string(argument(0))
             match = re.fullmatch(rb'[ \t\n\r\v\f]*%(l?d)([ \t\n\r\v\f]*)', fmt)
             if not match:
-                raise LibraryError('scanf supports exactly one %d or %ld conversion with optional whitespace')
+                raise LibraryError(
+                    'scanf supports exactly one %d or %ld conversion with optional whitespace',
+                    kind='unsupported')
             position = self.position
             byte = self.input_byte(position, context)
             while byte is not None and byte in WHITESPACE:
@@ -255,4 +260,4 @@ class Stdio:
             memory.write(argument(1), value.to_bytes(size, 'little', signed=True))
             self.position = position
             return 1
-        raise LibraryError(f'unsupported library call {name}')
+        raise LibraryError(f'unsupported library call {name}', kind='unsupported')

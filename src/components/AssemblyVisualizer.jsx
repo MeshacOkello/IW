@@ -4,12 +4,23 @@ import CodeEditor from "./CodeEditor";
 import RegisterPanel from "./RegisterPanel";
 import MemoryPanel from "./MemoryPanel";
 import Section from "./Section";
-import NumberText from "./NumberText";
 import { useState, useEffect, useRef, useCallback } from "react";
 import StdOut from "./StdOut";
 import StdIn from "./StdIn";
 import { extendHistory, stdoutAt, inputPrompt } from "../history";
 import { DEFAULT_RUN_DELAY, runDelayFrom } from "../runSpeed";
+import ErrorMessage from "./ErrorMessage";
+import { fromClient, fromResponse, fromTransport } from "../errors";
+
+// Carries the normalized error rather than a bare string, so the panel can
+// show the line, the source line and the suggestion alongside the message.
+class SimulationFailure extends Error {
+    constructor(error) {
+        super(error.message);
+        this.name = "SimulationFailure";
+        this.error = error;
+    }
+}
 
 function registerSnapshot(history, index) {
     const registers = history?.register_states[index];
@@ -126,17 +137,39 @@ mul x5, x3, x2`);
     }
 
     async function simulate(settings, signal) {
-        const response = await fetch('/simulate', {
-            method: 'POST',
-            headers: { 'Content-type': 'application/json' },
-            body: JSON.stringify(settings),
-            signal,
-        });
-        const data = await response.json();
+        let response;
+        try {
+            response = await fetch('/simulate', {
+                method: 'POST',
+                headers: { 'Content-type': 'application/json' },
+                body: JSON.stringify(settings),
+                signal,
+            });
+        } catch (error) {
+            const failure = fromTransport(error);
+            if (!failure) throw error;      // the request was cancelled
+            throw new SimulationFailure(failure);
+        }
+
+        // An HTML error page from a proxy, or an empty body, must not surface
+        // as a JSON parser error.
+        const body = await response.text();
+        let data;
+        try {
+            data = JSON.parse(body);
+        } catch {
+            throw new SimulationFailure(fromTransport(null, { status: response.status, body }));
+        }
+        // A run that failed partway still carries its recorded steps.
         if (!response.ok && !data.register_states) {
-            throw new Error(data.error || 'The simulation request failed.');
+            throw new SimulationFailure(fromResponse(data, { status: response.status }));
         }
         return data;
+    }
+
+    // null means the request was cancelled, so nothing should be shown.
+    function failureFrom(error) {
+        return error instanceof SimulationFailure ? error.error : fromClient(error);
     }
 
     async function handleLoad() {
@@ -156,7 +189,7 @@ mul x5, x3, x2`);
             setHistory(data);
             setRun(settings);
         } catch (error) {
-            if (isCurrentRequest(request)) setLoadError({ error: error.message });
+            if (isCurrentRequest(request)) setLoadError(failureFrom(error));
         } finally {
             finishRequest(request);
         }
@@ -186,7 +219,7 @@ mul x5, x3, x2`);
             }
             setIsRunning(hasMoreSteps && runIntent.current && inputDismissals.current === dismissals);
         } catch (error) {
-            if (isCurrentRequest(request)) setInputError(error.message);
+            if (isCurrentRequest(request)) setInputError(failureFrom(error));
         } finally {
             finishRequest(request);
         }
@@ -266,11 +299,7 @@ mul x5, x3, x2`);
                 <div className="code-panel">
                     <ExecutionControls onLoad={handleLoad} onNext = {handleNext} onBack={handleBack} onReset={handleReset} currentStep={stepIndex} totalSteps={history ? history.register_states.length - 1 : 0} onRun={handleRun} canPause={canPause} runDelay={runDelay} onRunDelayChange={setRunDelay} busy={busy} sourceChanged={sourceChanged} nextButtonRef={nextButton}/>
 
-                    {loadError && (
-                        <p role="alert">
-                            <NumberText parts={loadError.error_parts} fallback={loadError.error} formats={formats} />
-                        </p>
-                    )}
+                    {loadError && <ErrorMessage error={loadError} formats={formats} />}
                     <CodeEditor
                         assemblyCode={assemblyCode}
                         setAssemblyCode={changeSource}
@@ -290,7 +319,7 @@ mul x5, x3, x2`);
                         {!sourceChanged && atEnd && history.status.state === 'completed' && <p>Execution complete.</p>}
                         {!sourceChanged && atEnd && history.status.state === 'execution_limit' && <p>Execution stopped at the instruction limit.</p>}
                         {!sourceChanged && atEnd && history.status.state === 'error' && (
-                            <p role="alert"><NumberText parts={history.status.error_parts} fallback={history.status.error} formats={formats} /></p>
+                            <ErrorMessage error={fromResponse(history.status)} formats={formats} />
                         )}
                         {pending && <>
                             <span>Pending {pending.function} on line {pending.line}.</span>
@@ -329,7 +358,8 @@ mul x5, x3, x2`);
                 />                </div>
             </div>
             {dialogOpen && (
-                <StdIn key={pending.request_id} prompt={inputPrompt(history, pending)} busy={busy} error={inputError}
+                <StdIn key={pending.request_id} prompt={inputPrompt(history, pending)} busy={busy}
+                    error={inputError} formats={formats}
                     onSubmit={submitInput} onClose={closeInput}
                     returnFocusRef={inputButton} fallbackFocusRef={nextButton} />
             )}
