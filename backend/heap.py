@@ -7,10 +7,28 @@ HEAP_SIZE = 0x4000
 HEAP_END = HEAP_START + HEAP_SIZE
 HEAP_ALIGNMENT = 16
 SNAPSHOT_CHUNK_SIZE = 256
+# Library functions a program may call with bl. A label of the same name in
+# the program takes precedence, so a student's own labs or puts runs as code.
+# New names go at the end so existing call addresses do not move.
 LIBRARY_SYMBOLS = {
     name: 0x410000 + index * 4
-    for index, name in enumerate(('malloc', 'free', 'printf', 'puts', 'putchar', 'getchar', 'fgets', 'scanf'))
+    for index, name in enumerate(
+        ('malloc', 'free', 'printf', 'puts', 'putchar', 'getchar', 'fgets', 'scanf', 'labs'))
 }
+LONG_MIN = -(1 << 63)
+
+
+def labs(value):
+    """C's labs on the unsigned 64-bit contents of x0, read as a signed long.
+
+    LONG_MIN has no positive counterpart in a long. C leaves labs(LONG_MIN)
+    undefined; the AArch64 C library computes it with a negate that wraps, so
+    it returns LONG_MIN unchanged, and the simulator does the same rather than
+    stopping a program that would run on the real machine.
+    """
+    signed = value - (1 << 64) if value >= 1 << 63 else value
+    return abs(signed) & ((1 << 64) - 1) if signed != LONG_MIN else value
+
 
 
 class HeapError(ValueError):

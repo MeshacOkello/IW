@@ -107,14 +107,19 @@ def closest(word, candidates, cutoff=0.7):
     lowered = word.lower()
     if len(lowered) < SHORTEST_CORRECTABLE:
         return None
+    # Compared without case, so "Siz" still finds the upper-case constant
+    # "SIZE" that COS 217 style uses; the candidate comes back as written.
+    spellings = {}
+    for candidate in sorted(candidates):
+        spellings.setdefault(candidate.lower(), candidate)
     matches = [
-        match for match in difflib.get_close_matches(lowered, sorted(candidates), n=5, cutoff=cutoff)
+        match for match in difflib.get_close_matches(lowered, sorted(spellings), n=5, cutoff=cutoff)
         if abs(len(match) - len(lowered)) <= 1
     ]
     if not matches:
         return None
     letters = sorted(lowered)
-    return next((match for match in matches if sorted(match) == letters), matches[0])
+    return spellings[next((match for match in matches if sorted(match) == letters), matches[0])]
 
 
 def syntax_message(statement_text):
@@ -187,6 +192,8 @@ def instruction_failure(statement_text, defined_labels=()):
     malformed, so an undefined name is looked for here rather than trusted to
     the error code: "mov x2, n" is a missing "n", not bad syntax.
     """
+    if not statement_text:
+        return 'The assembler could not encode this section.', None
     register = invalid_register(statement_text, defined_labels)
     if register:
         return (f'"{register}" is not an AArch64 register.',

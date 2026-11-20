@@ -224,6 +224,7 @@ def simulate():
         memory_accesses,
         library_calls,
         pointer_states,
+        status.get('returned'),
     )
 
     response = {

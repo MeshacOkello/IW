@@ -8,7 +8,7 @@ import unicorn.arm64_const as reg
 
 import errors
 from assembler import STACK_START, STACK_END, TEXT_START, assemble_program, page_size
-from heap import HEAP_SIZE, HEAP_START, LIBRARY_SYMBOLS, Heap, HeapError
+from heap import HEAP_SIZE, HEAP_START, LIBRARY_SYMBOLS, Heap, HeapError, labs
 from instruction_parser import parse_instruction
 from library_io import InputProtocolError, LibraryMemory, Stdio, WaitingForInput
 from pointer_registers import PC as PC_INDEX, SP as SP_INDEX, pointer_registers_after
@@ -366,11 +366,17 @@ def record_register_states(
 
     counter = 0
     instruction_indices = {pc: index for index, pc in enumerate(sorted(instructions), start=1)}
-    PC = next(iter(instruction_indices), TEXT_START)
+    # A program with main starts there, as a C program does, wherever main sits
+    # in .text. Without one, execution starts at the first instruction.
+    PC = symbols['main'] if symbols.get('main') in instructions else next(iter(instruction_indices), TEXT_START)
     stopping_address = max(instructions, default=TEXT_START) + 4
 
     cpu_emulator.reg_write(reg.UC_ARM64_REG_PC, PC)
     initial_sp = cpu_emulator.reg_read(reg.UC_ARM64_REG_SP)
+    # The return address the first function was entered with. A ret to it from
+    # that function hands control back to the system: the program is done.
+    exit_address = cpu_emulator.reg_read(reg.UC_ARM64_REG_X30)
+    returned = None
 
     # The initial function exists before any call instruction executes.
     entry_labels = address_to_labels.get(PC, [])
@@ -440,6 +446,8 @@ def record_register_states(
                     cpu_emulator.reg_write(reg.UC_ARM64_REG_X0, heap.malloc(argument))
                 elif library_call == 'free':
                     heap.free(argument)
+                elif library_call == 'labs':
+                    cpu_emulator.reg_write(reg.UC_ARM64_REG_X0, labs(argument))
                 else:
                     context = {
                         'function': library_call, 'line': instructions[PC].line,
@@ -534,6 +542,13 @@ def record_register_states(
             if next_pc == active_frames[-1]['return_address']:
                 active_frames.pop()
                 settled_frames.pop()
+        elif is_ret and next_pc == exit_address:
+            # main (or the first function) returned: a normal end. Its int
+            # result is in w0, as the C runtime would read it.
+            value = after[0] & 0xFFFFFFFF
+            returned = {'function': active_frames[0]['name'],
+                        'value': value - (1 << 32) if value >> 31 else value,
+                        'step': counter + 1}
 
         frame_states.append(snapshot_frames(new_sp))
 
@@ -553,10 +568,15 @@ def record_register_states(
             ))
             break
 
+        if returned:
+            break
+
         PC = next_pc
 
     if stdio.event_index != len(input_events):
         raise InputProtocolError('input contains submissions beyond the requested execution occurrence')
+    if status is None and returned:
+        status = {'state': 'completed', 'returned': returned}
     if status is None:
         status = {'state': 'execution_limit' if counter >= execution_limit and PC in instructions else 'completed'}
 

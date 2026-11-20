@@ -1,7 +1,7 @@
 """Assemble a sectioned ARM64 program with Keystone."""
 import difflib
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from keystone import KS_ARCH_ARM64, KS_MODE_LITTLE_ENDIAN, Ks, KsError
 
@@ -20,6 +20,10 @@ MAX_SECTION_SIZE = 1 << 20
 
 NAME = r'[A-Za-z_.$][\w.$]*'
 LABEL = re.compile(rf'^({NAME}):\s*', re.ASCII)
+# A whole identifier in an operand list: not the tail of a longer name, and
+# not the digits after a "#" or inside a number such as 0x1f.
+IDENTIFIER = re.compile(r'(?<![\w.$])[A-Za-z_.$][\w.$]*', re.ASCII)
+CONSTANT_DIRECTIVES = ('.equ', '.set', '.equiv')
 STRING = r'"(?:\\.|[^"\\\n])*"'
 CHARACTER = r"'(?:\\.|[^'\\\n])*'"
 BLOCK_COMMENT = r'/\*[\s\S]*?\*/'
@@ -74,6 +78,11 @@ class Statement:
     line: int
     labels: tuple[str, ...]
     text: str
+    # For an assembled instruction: the value each named constant in its
+    # operands had at this point in the source, as (name, value) pairs. The
+    # text itself is never rewritten, so highlighting and explanations still
+    # show the line exactly as the student wrote it.
+    constants: tuple[tuple[str, int], ...] = ()
 
     @property
     def is_instruction(self):
@@ -308,10 +317,39 @@ class NoMachineCode(Exception):
     """Keystone returned no bytes without reporting an error."""
 
 
+class ForwardConstant(Exception):
+    """A line uses a constant whose .equ comes later in its section."""
+
+    def __init__(self, names):
+        super().__init__(', '.join(names))
+        self.names = names
+
+
 def defined_name(text):
     """The name an ".equ name, value" line defines, if it is one."""
     parts = text.split(None, 1)
     return parts[1].split(',', 1)[0].strip() if len(parts) == 2 else None
+
+
+def is_constant_definition(statement):
+    return bool(statement.text) and statement.text.split(None, 1)[0].lower() in CONSTANT_DIRECTIVES
+
+
+def operand_constants(text, constant_names):
+    """The named constants an instruction's operands mention, in order.
+
+    Only whole identifiers count, so "LFIRST" is not found inside
+    "LFIRSTX" and a constant named "L1" is not found in "0xL1".
+    """
+    parts = text.split(None, 1)
+    if len(parts) < 2:
+        return []
+    found = []
+    for match in IDENTIFIER.finditer(parts[1]):
+        name = match[0]
+        if name in constant_names and name not in found:
+            found.append(name)
+    return found
 
 
 @dataclass(frozen=True)
@@ -351,6 +389,12 @@ def keystone_error(error, *, statement=None, context=None, defined_labels=()):
         return AssemblyError(
             'The assembler produced no machine code for this line.',
             line=statement.line if statement else None, context=context, detail='no output')
+    if isinstance(error, ForwardConstant):
+        names = ' and '.join(f'"{name}"' for name in error.names)
+        return AssemblyError(
+            f'This line uses {names} before the .equ line that defines it.',
+            line=statement.line if statement else None, context=context, kind=UNSUPPORTED,
+            suggestion='Move the .equ line above the first line that uses the constant.')
     if isinstance(error, UnicodeEncodeError):
         return AssemblyError(
             'This line contains a character the assembler cannot encode. Non-ASCII '
@@ -404,13 +448,27 @@ def locate_assembly_error(assembler, probe, address):
     # them in as constants: a reference to a real label then resolves, and only
     # a genuinely undefined name still fails.
     base = header + [f'.equ {label}, 0' for label in probe.labels]
+    # The section's own .equ lines are statements rather than preamble. Each
+    # line is tried with the ones above it, in source order, as the whole
+    # section saw them: without them "sub sp, sp, SIZE" fails on its own even
+    # though SIZE is defined above it.
+    own_constants = [statement for statement in probe.statements if is_constant_definition(statement)]
+    defined = []
     for statement in probe.statements:
         text = probe_text(statement)
         if text is None:
             continue
-        error = attempt(base + [text])
+        error = attempt(base + defined + [text])
         if error is not None:
+            later = [defined_name(constant.text) for constant in own_constants
+                     if constant.line > statement.line]
+            used_later = [name for name in operand_constants(statement.text, set(later))
+                          if name not in {defined_name(text) for text in defined}]
+            if used_later and attempt(base + [c.text for c in own_constants] + [text]) is None:
+                return statement, ForwardConstant(used_later)
             return statement, error
+        if is_constant_definition(statement):
+            defined.append(statement.text)
     return None, None
 
 
@@ -475,6 +533,10 @@ def assemble_section(assembler, name, address, statements, constants, externals,
         return b'', {}, {}, ()
     external_lines = definitions(externals)
     lines = external_lines + [constant.text for constant in constants]
+    constant_names = {defined_name(constant.text) for constant in constants}
+    constant_names.update(defined_name(statement.text) for statement in statements
+                          if is_constant_definition(statement))
+    constant_names.discard(None)
     labels = []
     sites = {}
     markers = []
@@ -517,9 +579,19 @@ def assemble_section(assembler, name, address, statements, constants, externals,
             expression_marker = f'{start}_target'
             lines.append(f'.equ {expression_marker}, {expression}')
             markers.append(expression_marker)
+        # Capture each named constant's value at this line, where the
+        # assembler itself evaluates it, so a name redefined further down
+        # still reports the value this instruction used.
+        constant_markers = []
+        for index, constant in enumerate(operand_constants(statement.text, constant_names)):
+            marker = f'{start}_constant{index}'
+            lines.append(f'.equ {marker}, {constant}')
+            markers.append(marker)
+            constant_markers.append((constant, marker))
         lines.extend((text, end + ':'))
         markers.extend((start, end))
-        sites[start] = (statement, end, expression_marker, bool(address_instruction or low12))
+        sites[start] = (statement, end, expression_marker, bool(address_instruction or low12),
+                        tuple(constant_markers))
 
     # Drain literal pools before appending the address table so the table is
     # always at the end. It is stripped before loading the section into Unicorn.
@@ -539,7 +611,7 @@ def assemble_section(assembler, name, address, statements, constants, externals,
     }
     code = bytearray(output[:size])
     instructions = {}
-    for start, (statement, end, expression_marker, needs_encoding) in sites.items():
+    for start, (statement, end, expression_marker, needs_encoding, constant_markers) in sites.items():
         pc, end = values[start], values[end]
         in_section = address <= pc < end <= address + size
         if pc % 4 and in_section:
@@ -558,6 +630,9 @@ def assemble_section(assembler, name, address, statements, constants, externals,
         if end - pc != 4 or not in_section:
             message, suggestion = instruction_failure(statement.text, known)
             raise AssemblyError(message, line=statement.line, suggestion=suggestion)
+        if constant_markers:
+            statement = replace(statement, constants=tuple(
+                (constant, signed64(values[marker])) for constant, marker in constant_markers))
         instructions[pc] = statement
         if needs_encoding:
             target = values.get(expression_marker)
@@ -570,6 +645,10 @@ def assemble_section(assembler, name, address, statements, constants, externals,
         instructions,
         tuple((values[start], values[end]) for start, end in strings),
     )
+
+
+def signed64(value):
+    return value - (1 << 64) if value >= 1 << 63 else value
 
 
 def assemble_program(source):

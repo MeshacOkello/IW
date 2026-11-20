@@ -154,6 +154,10 @@ class Step:
             if operand['value'] is None:
                 return None, operand['text'], operand['text']
             shown = self.data(operand['value'])
+            if operand.get('constant'):
+                # Keep the student's name for it, with the value it stands for.
+                named = f"{operand['text']} ({shown})"
+                return operand['value'] & mask(bits), named, named
             return operand['value'] & mask(bits), shown, shown
         value = self.read(operand, 'before')
         if len(self.operands) == index + 1:
@@ -640,6 +644,9 @@ def explain_memory(step):
         if memory['offset'] is not None and offset_value is not None:
             sign = '−' if offset_value < 0 else '+'
             detail = f" ({name(base)} {sign} {step.data(abs(offset_value))})"
+            if memory['offset'].get('constant'):
+                constant = memory['offset']['text']
+                detail = f" ({name(base)} + {constant}, and {constant} is {step.data(offset_value)})"
         else:
             detail = f" ({name(base)} + {offset_text})"
     if memory['offset'] is not None and offset_value is not None:
@@ -710,11 +717,37 @@ HANDLERS = {
 }
 
 
-def explain_step(line, before, after, before_stack, accesses, numbers, before_pointers, after_pointers):
+def resolve_constants(operands, constants):
+    """Give each operand that names an .equ constant the value it had here.
+
+    The name stays as the operand's text, so a formula still reads in the
+    student's own words; only the value the trace needs is filled in.
+    """
+    if not constants or operands is None:
+        return operands
+
+    def resolve(operand):
+        if operand is None:
+            return None
+        if operand['kind'] == 'label' and operand['name'] in constants:
+            return {'kind': 'imm', 'text': operand['name'], 'value': constants[operand['name']],
+                    'constant': True}
+        if operand['kind'] == 'imm' and operand['value'] is None and operand['text'] in constants:
+            return dict(operand, value=constants[operand['text']], constant=True)
+        if operand['kind'] == 'mem' and operand['offset'] is not None:
+            return dict(operand, offset=resolve(operand['offset']))
+        return operand
+
+    return [resolve(operand) for operand in operands]
+
+
+def explain_step(line, before, after, before_stack, accesses, numbers, before_pointers, after_pointers,
+                 constants=()):
     parsed = parse_instruction(line)
     if parsed is None:
         return "This line is not an instruction, so there is nothing to explain."
-    mnemonic, operands = parsed['mnemonic'], parsed['operands']
+    mnemonic = parsed['mnemonic']
+    operands = resolve_constants(parsed['operands'], dict(constants))
     handler = HANDLERS.get(mnemonic)
     if handler is None:
         return f"No explanation for {mnemonic}: it isn't one of the COS 217 instructions this panel covers."
@@ -742,6 +775,12 @@ def explain_heap_call(call, argument, result, numbers):
         if result == 0xffffffff:
             return "getchar reached EOF and returns EOF in w0."
         return f"getchar consumes one input byte and returns {numbers.data(result)} in w0."
+    if call == 'labs':
+        value = argument - (1 << 64) if argument >= 1 << 63 else argument
+        if value == -(1 << 63):
+            return (f"labs({numbers.data(value)}) has no positive long result, because the largest long is "
+                    f"{numbers.data((1 << 63) - 1)}. Like the real C library, it returns {numbers.data(value)} unchanged in x0.")
+        return f"labs returns the absolute value of {numbers.data(value)}, which is {numbers.data(abs(value))}, in x0."
     if call in ('printf', 'puts', 'putchar'):
         return f"{call} writes to stdout and returns {numbers.data(result)} in w0."
     if argument == 0:
@@ -751,7 +790,17 @@ def explain_heap_call(call, argument, result, numbers):
 
 # One explanation per snapshot: explanations[i] describes the instruction that
 # turned snapshot i - 1 into snapshot i. explanations[0] is None.
-def explain_trace(executed_statements, register_states, stack_states, memory_accesses, library_calls, pointer_states):
+def explain_program_return(returned, numbers):
+    function = returned['function']
+    return (f"Return from {function}: x30 still holds the return address the program started with, "
+            f"so {function} hands control back to the system and the program ends. "
+            f"{function} returned {numbers.data(returned['value'])} in w0.")
+
+
+# `returned` is the trace status's record of the first function returning, if
+# it did; that ret ends the program rather than going back to a caller.
+def explain_trace(executed_statements, register_states, stack_states, memory_accesses, library_calls, pointer_states,
+                  returned=None):
     explanations = [None]
     explanation_parts = [None]
     for i, statement in enumerate(executed_statements, start=1):
@@ -760,10 +809,12 @@ def explain_trace(executed_statements, register_states, stack_states, memory_acc
         call = library_calls.get(before[PC])
         if call:
             text = explain_heap_call(call, before[0], after[0], numbers)
+        elif returned and returned['step'] == i:
+            text = explain_program_return(returned, numbers)
         else:
             text = explain_step(
                 statement.text, before, after, stack_states[i - 1], memory_accesses[i],
-                numbers, pointer_states[i - 1], pointer_states[i],
+                numbers, pointer_states[i - 1], pointer_states[i], statement.constants,
             )
         plain, parts = numbers.render(text)
         explanations.append(plain)
