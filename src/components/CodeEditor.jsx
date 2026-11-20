@@ -1,5 +1,6 @@
-import { useLayoutEffect, useRef } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
 import { indentEdit } from "../editorIndent";
+import { highlightLine } from "../highlight";
 
 export default function CodeEditor({
     assemblyCode,
@@ -8,15 +9,20 @@ export default function CodeEditor({
 }) {
     const textareaRef = useRef(null);
     const backdropRef = useRef(null);
+    const gutterRef = useRef(null);
+    const containerRef = useRef(null);
+    const lines = assemblyCode.split("\n");
 
     function syncScroll() {
         const textarea = textareaRef.current;
         const backdrop = backdropRef.current;
+        const gutter = gutterRef.current;
 
         if (!textarea || !backdrop) return;
 
         backdrop.scrollTop = textarea.scrollTop;
         backdrop.scrollLeft = textarea.scrollLeft;
+        if (gutter) gutter.scrollTop = textarea.scrollTop;
     }
 
     // Replace a range in place, through the browser's own editing command so
@@ -59,16 +65,32 @@ export default function CodeEditor({
         }
     }
 
-    useLayoutEffect(() => {
+    // The textarea's scrollbars shrink its client area, which lets it scroll
+    // further than the backdrop and gutter beside it. Their size is passed to
+    // the stylesheet, which pads those two by the same amount. Scrollbars
+    // come and go with the text as well as with the editor's size.
+    const measureScrollbars = useCallback(() => {
         const textarea = textareaRef.current;
-        if (!textarea || activeLine == null) return;
+        const container = containerRef.current;
+        if (!textarea || !container) return;
+        container.style.setProperty("--editor-scrollbar-x", `${textarea.offsetHeight - textarea.clientHeight}px`);
+        container.style.setProperty("--editor-scrollbar-y", `${textarea.offsetWidth - textarea.clientWidth}px`);
+        syncScroll();
+    }, []);
+
+    useLayoutEffect(measureScrollbars, [assemblyCode, measureScrollbars]);
+
+    // Bring the executed line into view if it is outside the editor.
+    const revealLine = useCallback((line) => {
+        const textarea = textareaRef.current;
+        if (!textarea || line == null) return;
 
         const styles = getComputedStyle(textarea);
         const lineHeight = parseFloat(styles.lineHeight);
         const paddingTop = parseFloat(styles.paddingTop);
         const paddingBottom = parseFloat(styles.paddingBottom);
 
-        const lineTop = paddingTop + (activeLine - 1) * lineHeight;
+        const lineTop = paddingTop + (line - 1) * lineHeight;
         const lineBottom = lineTop + lineHeight;
 
         const visibleTop = textarea.scrollTop + paddingTop;
@@ -83,41 +105,78 @@ export default function CodeEditor({
         }
 
         syncScroll();
-    }, [activeLine, assemblyCode]);
+    }, []);
+
+    useLayoutEffect(() => revealLine(activeLine), [activeLine, assemblyCode, revealLine]);
+
+    // The editor's height follows the window, so a resize can leave the
+    // executed line out of view as well as change the scrollbars.
+    const activeLineRef = useRef(activeLine);
+    useEffect(() => {
+        activeLineRef.current = activeLine;
+    });
+
+    useEffect(() => {
+        const observer = new ResizeObserver(() => {
+            measureScrollbars();
+            revealLine(activeLineRef.current);
+        });
+        observer.observe(textareaRef.current);
+        return () => observer.disconnect();
+    }, [measureScrollbars, revealLine]);
 
     return (
         <div className="code-editor">
-            <h4>Assembly Code</h4>
-
-            <div className="editor-container">
-                <pre
-                    className="editor-backdrop"
-                    ref={backdropRef}
-                    aria-hidden="true"
-                >
-                    {assemblyCode.split("\n").map((line, index) => (
+            <div className="editor-container" ref={containerRef}>
+                <div className="editor-gutter" ref={gutterRef} aria-hidden="true">
+                    {lines.map((_, index) => (
                         <span
                             key={index}
-                            className={
-                                activeLine === index + 1 ? "active-line" : ""
-                            }
+                            className={activeLine === index + 1 ? "active-line-number" : ""}
                         >
-                            {line || " "}
+                            {index + 1}
                         </span>
                     ))}
-                </pre>
+                </div>
 
-                <textarea
-                    ref={textareaRef}
-                    className="assembly-input"
-                    value={assemblyCode}
-                    onChange={(event) => setAssemblyCode(event.target.value)}
-                    onKeyDown={handleKeyDown}
-                    onScroll={syncScroll}
-                    wrap="off"
-                    spellCheck={false}
-                    aria-label="Assembly code"
-                />
+                <div className="editor-surface">
+                    {/* The coloured text lives here; the textarea above it is
+                        transparent apart from its caret and selection. */}
+                    <pre
+                        className="editor-backdrop"
+                        ref={backdropRef}
+                        aria-hidden="true"
+                    >
+                        {lines.map((line, index) => (
+                            <span
+                                key={index}
+                                className={
+                                    activeLine === index + 1 ? "active-line" : ""
+                                }
+                            >
+                                {line === ""
+                                    ? " "
+                                    : highlightLine(line).map((token, position) => (
+                                        <span key={position} className={`tok-${token.kind}`}>
+                                            {token.text}
+                                        </span>
+                                    ))}
+                            </span>
+                        ))}
+                    </pre>
+
+                    <textarea
+                        ref={textareaRef}
+                        className="assembly-input"
+                        value={assemblyCode}
+                        onChange={(event) => setAssemblyCode(event.target.value)}
+                        onKeyDown={handleKeyDown}
+                        onScroll={syncScroll}
+                        wrap="off"
+                        spellCheck={false}
+                        aria-label="Assembly code"
+                    />
+                </div>
             </div>
         </div>
     );

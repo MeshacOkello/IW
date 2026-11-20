@@ -28,10 +28,12 @@ export default function NextInstruction({
     return (
         <div className="next-instruction">
             <span>Executed Instruction</span>
-            <h5>{instruction}</h5>
-            {isLoaded && currentLine != null && explanation && (
-                <h5><NumberText parts={explanationParts} fallback={explanation} formats={formats} /></h5>
-            )}
+            <div className="next-instruction-body">
+                <h5>{instruction}</h5>
+                {isLoaded && currentLine != null && explanation && (
+                    <h5><NumberText parts={explanationParts} fallback={explanation} formats={formats} /></h5>
+                )}
+            </div>
         </div>
     );
 }

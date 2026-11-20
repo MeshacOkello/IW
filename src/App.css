@@ -1,592 +1,854 @@
-html,
-body,
-#root {
-  width: 100%;
-  height: 100%;
-  margin: 0;
-  padding: 0;
-}
+/* Layout ------------------------------------------------------------------ */
 
-body {
-  display: block;
-}
-
-#root {
-  max-width: none;
-}
+/* On a wide screen the app is exactly one viewport tall, so every panel has a
+   definite height to divide among its parts and each part scrolls inside
+   itself; nothing a program does can grow the page. Below the floor there is
+   too little room for the editor, so the page scrolls instead of crushing it. */
 .assembly-visualizer {
   box-sizing: border-box;
-  height: 100dvh;
-  width: 100%;
-  padding: 12px;
+  height: max(100svh, 46rem);
+  min-height: 100svh;
+  padding: 20px 24px 24px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  --address-color: light-dark(#275f85, #7db8df);
+  gap: 18px;
+  background: linear-gradient(180deg, var(--page) 0%, var(--page-edge) 100%);
+  text-align: left;
 }
 
-.visualizer-header,
-.number-formats,
+:root[data-theme='dark'] .assembly-visualizer {
+  background: var(--page);
+}
+
+.app-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.app-header h1,
+.app-header .brand {
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+  color: var(--heading-ink);
+}
+
+.brand-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 24px;
+}
+
+/* Page navigation ---------------------------------------------------------- */
+
+.page-nav {
+  display: flex;
+  gap: 4px;
+}
+
+.page-nav a {
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  color: var(--text-h);
+  font-size: 14.5px;
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.page-nav a:hover {
+  background: var(--surface-head);
+}
+
+.page-nav a[aria-current='page'] {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+:root[data-theme='dark'] .page-nav a[aria-current='page'] {
+  color: var(--heading-ink);
+}
+
+a:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.icon {
+  flex: none;
+}
+
+.number-formats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+}
+
 .number-formats label {
   display: flex;
   align-items: center;
   gap: 8px;
-}
-
-.visualizer-header {
-  flex-shrink: 0;
-  flex-wrap: wrap;
-  justify-content: space-between;
-}
-
-.visualizer-header h1 {
-  margin: 0;
-}
-
-.number-formats {
-  flex-wrap: wrap;
+  color: var(--text-h);
   font-size: 14px;
 }
 
-.address-value {
-  color: var(--address-color);
-}
-
+/* The one row takes the space the header leaves; minmax(0, …) stops the
+   row from growing to fit the tallest panel's contents. */
 .workspace {
-  flex: 1;
+  flex: 1 1 0;
   min-height: 0;
   display: grid;
-  grid-template-columns:
-    minmax(0, 2.8fr)
-    minmax(0, 2.8fr)
-    minmax(0, 2fr);
-  gap: 16px;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.78fr) minmax(0, 1.02fr);
+  grid-template-rows: minmax(0, 1fr);
+  gap: 18px;
+  align-items: stretch;
 }
 
-.workspace > div {
-  min-width: 0;
-  min-height: 0;
-}
+/* Panels ------------------------------------------------------------------ */
 
-/* Code panel */
-
-.code-panel {
+.panel {
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
+  gap: 14px;
+  min-width: 0;
   min-height: 0;
-  padding: 12px;
-  border: 1px solid lightgray;
-  border-radius: 3px;
+  height: 100%;
+  --panel-padding: 18px;
+  padding: var(--panel-padding);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.panel > h2,
+.panel-head h2 {
+  font-size: 21px;
+}
+
+.panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+/* Dark mode switch -------------------------------------------------------- */
+
+.theme-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  color: var(--text);
+  font-size: 14px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.theme-switch input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.switch-track {
+  position: relative;
+  width: 42px;
+  height: 23px;
+  border-radius: 999px;
+  background: var(--border-strong);
+  transition: background 150ms ease;
+}
+
+.switch-track::after {
+  content: "";
+  position: absolute;
+  top: 2.5px;
+  left: 2.5px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--switch-knob, #fff);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 25%);
+  transition: transform 150ms ease;
+}
+
+:root[data-theme='dark'] .switch-track {
+  --switch-knob: #c9cad0;
+}
+
+.theme-switch input:checked + .switch-track {
+  background: var(--accent);
+}
+
+.theme-switch input:checked + .switch-track::after {
+  transform: translateX(19px);
+}
+
+.theme-switch input:focus-visible + .switch-track {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+/* Controls ---------------------------------------------------------------- */
+
+button,
+select {
+  font: inherit;
+  font-size: 14px;
+  color: var(--text-h);
+}
+
+select {
+  box-sizing: border-box;
+  padding: 5px 9px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  cursor: pointer;
+}
+
+button {
+  padding: 6px 13px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+button:hover:not(:disabled) {
+  background: var(--surface-head);
+}
+
+button.primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 600;
+}
+
+button.primary:hover:not(:disabled) {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
+
+button.danger {
+  border-color: var(--error-program);
+  background: var(--error-program);
+  color: var(--surface);
+  font-weight: 600;
+}
+
+button.danger:hover:not(:disabled) {
+  background: var(--error-program);
+  filter: brightness(1.08);
+}
+
+button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+button:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
 }
 
 .execution-controls {
   display: flex;
-  flex-shrink: 0;
   flex-wrap: wrap;
   align-items: center;
-  justify-content: center;
-  gap: 6px 8px;
-  margin-bottom: 12px;
+  gap: 7px;
 }
 
 .execution-controls button {
-  padding: 8px 12px;
-  cursor: pointer;
+  padding: 6px 10px;
+}
+
+/* Sized for its widest option, so the row does not reflow when the speed
+   changes and the step counter keeps its place on the line. */
+.execution-controls select {
+  width: 78px;
+  padding: 5px 4px 5px 8px;
 }
 
 .run-speed {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 4px;
-  font-size: 12px;
-  white-space: nowrap;
-}
-
-.run-speed input {
-  width: 50px;
-  padding: 4px 2px 4px 4px;
-  font: inherit;
-  text-align: right;
-}
-
-.next-instruction {
-  box-sizing: border-box;
-  flex: 0 0 110px;
-  height: 110px;
-  min-height: 0;
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  grid-template-rows: 24px minmax(0, 1fr);
-  align-items: baseline;
-  gap: 6px 12px;
-  padding: 10px 12px;
-  margin-top: 12px;
-  margin-bottom: 0;
-  border: 1px solid lightgray;
-  border-radius: 3px;
-  text-align: left;
-  overflow: hidden;
-}
-
-.next-instruction > span {
-  font-size: 13px;
-  white-space: nowrap;
-}
-
-.next-instruction h5 {
-  min-width: 0;
-  margin: 0;
+  gap: 7px;
+  color: var(--text);
   font-size: 14px;
-  line-height: 1.5;
+  white-space: nowrap;
 }
 
-.next-instruction > h5:nth-child(2) {
-  font-family: monospace;
+.step-counter {
+  color: var(--text-h);
+  font-size: 14px;
   font-weight: 600;
   white-space: nowrap;
-  overflow-x: auto;
 }
 
-.next-instruction > h5:nth-child(3) {
-  grid-column: 1 / -1;
-  align-self: stretch;
-  min-height: 0;
-  overflow-y: auto;
-  overflow-wrap: anywhere;
-  font-weight: normal;
-}
+/* Code editor ------------------------------------------------------------- */
 
-/* Editor and synchronized highlight */
-
+/* The editor takes whatever the panel has left after the fixed-size parts
+   around it, and scrolls inside that. */
 .code-editor {
-  flex: 1;
+  flex: 1 1 0;
   min-width: 0;
-  /* Keep a usable editor even when an error message shares the panel. */
-  min-height: 120px;
+  min-height: 9rem;
   display: flex;
   flex-direction: column;
-  padding: 12px;
-  border: 1px solid lightgray;
-  border-radius: 3px;
-}
-
-.code-editor > h4 {
-  flex-shrink: 0;
-  margin: 0 0 8px;
-  text-align: left;
 }
 
 .editor-container {
   position: relative;
   flex: 1;
   min-height: 0;
+  display: flex;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
 }
 
-.editor-container .assembly-input,
-.editor-backdrop {
-  box-sizing: border-box;
-  width: 100%;
-  height: 100%;
+.editor-gutter,
+.editor-backdrop,
+.editor-container .assembly-input {
   margin: 0;
-  padding: 8px;
-  font-family: monospace;
-  font-size: 14px;
-  line-height: 20px;
+  font-family: var(--mono);
+  font-size: 13.5px;
+  line-height: 22px;
   letter-spacing: normal;
   tab-size: 4;
   text-align: left;
 }
 
-.editor-backdrop {
-  position: absolute;
-  inset: 0;
-  border: 1px solid transparent;
+.editor-gutter {
+  box-sizing: border-box;
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
-  white-space: pre;
-  color: transparent;
-  pointer-events: none;
+  padding: 10px 10px 10px 12px;
+  border-right: 1px solid var(--border);
+  background: var(--surface-sunken);
+  color: var(--muted);
+  text-align: right;
+  user-select: none;
 }
 
-.editor-backdrop span {
+.editor-gutter span {
+  flex: none;
+  height: 22px;
+}
+
+.editor-gutter .active-line-number {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.editor-surface {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+
+.editor-backdrop,
+.editor-container .assembly-input {
+  box-sizing: border-box;
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  padding: 10px 12px;
+}
+
+/* The textarea's own scrollbars take room from its content box, so it can
+   scroll further than the backdrop and gutter. Padding them by the same
+   amount (measured by the editor) keeps every line aligned at the ends of the
+   scroll range. */
+.editor-gutter {
+  padding-bottom: calc(10px + var(--editor-scrollbar-x, 0px));
+}
+
+.editor-backdrop {
+  padding-right: calc(12px + var(--editor-scrollbar-y, 0px));
+  padding-bottom: calc(10px + var(--editor-scrollbar-x, 0px));
+  overflow: hidden;
+  white-space: pre;
+  pointer-events: none;
+  color: var(--text-h);
+  /* One auto column is as wide as the longest line or the editor, whichever
+     is wider, and every line stretches to it, so the executed-line highlight
+     still spans the view when the code is scrolled sideways. */
+  display: grid;
+  grid-template-columns: auto;
+  align-content: start;
+}
+
+.editor-backdrop > span {
   display: block;
-  min-width: 100%;
-  width: max-content;
-  height: 20px;
+  height: 22px;
 }
 
 .editor-backdrop .active-line {
-  background-color: light-dark(lightgray, #353844);
+  background: var(--highlight);
+  box-shadow: inset 3px 0 0 var(--accent);
 }
 
+/* The text is drawn by the backdrop, so only the caret and selection show. */
 .editor-container .assembly-input {
-  position: absolute;
-  inset: 0;
   display: block;
-  border: 1px solid gray;
+  border: 0;
   background: transparent;
+  color: transparent;
+  caret-color: var(--text-h);
   overflow: auto;
   resize: none;
 }
 
-/* Registers */
+.editor-container .assembly-input::selection {
+  background: var(--selection);
+}
 
-.register-column {
-  min-width: 0;
+.tok-directive { color: var(--code-directive); }
+.tok-label { color: var(--code-label); font-weight: 700; }
+.tok-mnemonic { color: var(--code-mnemonic); font-weight: 600; }
+.tok-register { color: var(--code-register); }
+.tok-immediate,
+.tok-number { color: var(--code-immediate); }
+.tok-comment { color: var(--code-comment); }
+.tok-string { color: var(--code-string); }
+.tok-name { color: var(--code-name); }
+
+/* Executed instruction and stdout ----------------------------------------- */
+
+/* A fixed height, so stepping between short and long explanations never
+   moves the editor or stdout; a long explanation scrolls under its heading. */
+.next-instruction {
+  box-sizing: border-box;
+  flex: 0 0 auto;
+  height: 8.5rem;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+}
+
+.next-instruction > span {
+  flex: none;
+  display: block;
+  margin-bottom: 7px;
+  color: var(--heading-ink);
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.next-instruction h5 {
+  margin: 0;
+  font-weight: 400;
+}
+
+.next-instruction-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  overflow-wrap: anywhere;
+}
+
+.next-instruction-body > h5:first-child {
+  color: var(--text-h);
+  font-family: var(--mono);
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.next-instruction-body > h5:nth-child(2) {
+  margin-top: 5px;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 13px;
+}
+
+/* A share of the panel rather than its contents' height: output scrolls
+   inside the pre, which keeps the spaces and newlines the program wrote and
+   scrolls sideways for a long line. */
+.stdout {
+  box-sizing: border-box;
+  flex: 0 0 clamp(6rem, 22%, 13rem);
   min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
 }
 
-.register-panel {
-  box-sizing: border-box;
-  flex: 0 1 auto;
-  min-width: 0;
+.stdout h5 {
+  flex: none;
+  margin: 0 0 7px;
+  color: var(--heading-ink);
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.stdout pre {
+  flex: 1;
   min-height: 0;
-  padding: 12px;
-  border: 1px solid lightgray;
-  border-radius: 3px;
+  margin: 0;
+  overflow: auto;
+  white-space: pre;
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-h);
+}
+
+.stdout-empty {
+  color: var(--muted);
+}
+
+.simulation-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  color: var(--text);
+  font-size: 13.5px;
+}
+
+.simulation-status:empty {
+  display: none;
+}
+
+/* A long runtime error scrolls rather than pushing the editor out. */
+.simulation-status {
+  flex: 0 0 auto;
+  max-height: 30%;
   overflow-y: auto;
 }
 
-/* .rodata fills what the registers leave of their column. */
-.rodata-panel {
-  box-sizing: border-box;
-  flex: 1 1 0;
-  min-width: 0;
-  min-height: 140px;
-  display: flex;
-  flex-direction: column;
-  padding: 8px 10px 10px;
-  border: 1px solid lightgray;
-  border-radius: 3px;
+/* Registers --------------------------------------------------------------- */
+
+/* The tables scroll inside the panel so the NZCV card below them stays in
+   view however short the panel is. A wide value scrolls the tables sideways
+   rather than widening the column. */
+.registers-panel {
+  overflow: hidden;
 }
 
-.register-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 8px;
+.registers-panel .register-tables {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  align-content: start;
 }
 
-.register-header h5 {
-  margin: 0;
-}
-
-.register-options {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
+/* A table is never narrower than its widest value: a 20-digit number would
+   otherwise spill over the next table. The tables scroll sideways instead. */
 .register-tables {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(min-content, 1fr));
   gap: 12px;
+  min-width: 0;
 }
 
 .register-tables table {
-  table-layout: fixed;
   width: 100%;
   border-collapse: separate;
-  border-spacing: 0 3px;
+  border-spacing: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  font-size: 13.5px;
 }
 
-.register-tables td {
-  padding: 2px 6px;
-  border: 1px solid lightgray;
-  font-family: monospace;
+.register-tables thead th {
+  padding: 7px 10px;
+  background: var(--surface-head);
+  border-bottom: 1px solid var(--border);
+  color: var(--heading-ink);
+  font-weight: 700;
   text-align: left;
 }
 
-.register-tables td:first-child {
-  width: 35px;
-  font-size: 13px;
-}
-
-.register-tables td:last-child {
-  font-size: 15px;
-}
-
-.register-changed td {
-  font-weight: bold;
-  background-color: lightgray;
-}
-
-.nzcv-flags {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 4px;
-}
-
-.nzcv-flags span {
-  padding: 3px;
-  border: 1px solid lightgray;
-  text-align: center;
-  white-space: nowrap;
-}
-
-/* Memory layout */
-
-.memory-panel {
-  min-width: 0;
-  min-height: 0;
-  display: flex;
-  padding: 12px;
-  border: 1px solid lightgray;
-  border-radius: 3px;
-}
-
-.memory-panel > div {
-  flex: 1;
-  min-width: 0;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-}
-
-.memory-header {
-  display: flex;
-  flex-shrink: 0;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 12px;
-}
-
-.memory-header h5 {
-  margin: 0;
-}
-
-.memory-columns {
-  flex: 3 1 0;
-  min-width: 0;
-  min-height: 0;
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.memory-columns > div {
-  min-width: 0;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-}
-.stack-section > h5,
-.heap-section > h5 {
-  flex-shrink: 0;
-  margin: 0 0 12px;
-  text-align: center;
-}
-
-/* Data sections */
-
-.section-columns {
-  flex: 1.3 1 0;
-  min-width: 0;
-  min-height: 0;
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-  margin-top: 12px;
-}
-
-.section-region {
-  flex: 1;
-  min-width: 0;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-}
-
-.section-region > h5 {
-  flex-shrink: 0;
-  margin: 0;
+.register-tables tbody th,
+.register-tables td {
+  padding: 5px 10px;
+  border-bottom: 1px solid var(--border);
   font-family: var(--mono);
-  font-size: 13px;
-  line-height: 18px;
-  text-align: center;
-}
-
-.section-region .stack-labels {
-  padding: 1px 6px 3px;
-  font-size: 11px;
-}
-
-.section-bar {
-  flex: 1;
-  min-height: 0;
-  border: 1px solid lightgray;
-  overflow: auto;
-}
-
-/* The spacer above the first rendered row keeps the scrollbar honest while
-   only the visible rows exist. Rows size to the widest one so a long string
-   or a wide number scrolls sideways instead of being cut off. */
-.virtual-rows {
-  box-sizing: border-box;
-  width: max-content;
-  min-width: 100%;
-}
-
-.virtual-row {
-  width: 100%;
-}
-
-.section-cell {
-  height: 100%;
-  gap: 6px;
-  padding: 0 6px;
-  border: none;
-  border-bottom: 1px solid lightgray;
-  line-height: 15px;
-}
-
-.section-cell .address-value {
-  flex: none;
-}
-
-.section-cell span:last-child {
-  margin-left: auto;
-}
-
-.section-label {
-  display: flex;
-  align-items: center;
-  height: 100%;
-  padding: 0 6px;
-  border-bottom: 1px solid lightgray;
-  background: var(--code-bg);
-  color: var(--text-h);
-  font: 600 11px/1 var(--mono);
+  font-weight: 400;
+  text-align: left;
   white-space: nowrap;
+}
+
+.register-tables tbody th {
+  width: 38%;
+  color: var(--text-h);
+}
+
+.register-tables td {
+  color: var(--text-h);
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.section-string {
-  color: light-dark(#8a4b00, #e5b26b);
+.register-tables tbody tr:last-child th,
+.register-tables tbody tr:last-child td {
+  border-bottom: 0;
 }
 
-.stack-bar,
-.heap-bar {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  border: 1px solid lightgray;
-  overflow-y: auto;
-}
-
-.stack-bar {
-  justify-content: flex-start;
-}
-
-.stack-bar > .memory-frame:first-child {
-  margin-top: auto;
-}
-
-.heap-bar {
-  gap: 8px;
-  padding-block: 6px;
-}
-
-.heap-allocation {
-  --frame-color: var(--text);
-  --frame-background: var(--bg);
-}
-
-.heap-allocation .frame-heading {
-  flex-wrap: wrap;
-  gap: 0 8px;
-}
-
-.heap-contents {
-  color: var(--text-h);
-  font: 13px/1.5 var(--mono);
-  text-align: left;
-}
-
-.memory-frame .heap-cell span {
-  min-width: 0;
-  white-space: normal;
-  overflow-wrap: anywhere;
-}
-
-.heap-values {
-  text-align: right;
-}
-
-.heap-empty {
-  margin: 8px;
-  font-size: 13px;
-}
-
-.stack-labels {
-  display: flex;
-  flex-shrink: 0;
-  justify-content: space-between;
-  padding: 6px;
-  font-size: 13px;
+.register-tables .register-changed th,
+.register-tables .register-changed td {
+  background: var(--highlight);
   font-weight: 600;
 }
 
-/* Memory cells */
+.address-value {
+  color: var(--address);
+}
+
+/* Its own card inside the registers panel, below the tables. */
+.flags-panel {
+  box-sizing: border-box;
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.flags-panel h2 {
+  font-size: 19px;
+}
+
+.flag-boxes {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+}
+
+.flag-box {
+  padding: 9px 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
+  color: var(--text-h);
+  font-family: var(--mono);
+  font-size: 15px;
+  font-weight: 700;
+  text-align: center;
+}
+
+/* RAM --------------------------------------------------------------------- */
+
+.ram-panel {
+  gap: 14px;
+  /* Every region is visible at once, so the panel itself never scrolls. */
+  overflow: hidden;
+}
+
+/* The stack is what a program spends its time in, so it takes a whole column.
+   The heap is rarely more than a few allocations, so it keeps one short box
+   and .data takes the height it gives up. */
+.ram-grid {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.1fr);
+  grid-template-areas:
+    "stack  heap"
+    "stack  data"
+    "stack  bss"
+    "rodata rodata";
+  gap: 14px;
+}
+
+.ram-grid > .stack-section { grid-area: stack; }
+.ram-grid > .heap-section { grid-area: heap; }
+.ram-grid > .section-region-data { grid-area: data; }
+.ram-grid > .section-region-bss { grid-area: bss; }
+.ram-grid > .section-region-rodata { grid-area: rodata; }
+
+.stack-section,
+.heap-section,
+.section-region {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  padding: 12px 14px;
+}
+
+.stack-section > h5,
+.heap-section > h5,
+.section-region > h5 {
+  flex: 0 0 auto;
+  margin: 0 0 8px;
+  color: var(--heading-ink);
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.stack-labels {
+  flex: 0 0 auto;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 2px 6px;
+  border-bottom: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* Each region scrolls within itself rather than growing the panel. */
+.stack-bar,
+.heap-bar,
+.section-bar {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding-top: 6px;
+}
+
+/* The stack grows upward from the bottom of its region, as it is drawn in
+   lecture diagrams: main sits at the bottom and each call lands on top. The
+   auto margin pushes the frames down while they fit; once they overflow it
+   collapses to zero, so the newest frame stays at the top of the scroll
+   range and the oldest remain reachable below it. */
+.stack-bar {
+  display: flex;
+  flex-direction: column;
+}
+
+.stack-bar > :first-child {
+  margin-top: auto;
+}
+
+.stack-bar > :last-child {
+  margin-bottom: 0;
+}
+
+.heap-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--muted);
+  font-size: 13px;
+  text-align: center;
+}
+
+.virtual-rows {
+  box-sizing: border-box;
+}
+
+.virtual-row {
+  display: flex;
+  align-items: center;
+}
+
+/* Memory cells, frames and sections --------------------------------------- */
 
 .memory-cell {
-  box-sizing: border-box;
-  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 6px;
-  border: 1px solid lightgray;
+  min-width: 0;
+  padding: 2px 4px;
+  border-radius: 4px;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  color: var(--text-h);
 }
 
 .memory-cell span {
-  font-family: monospace;
-  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.frame-cells,
-.memory-frame .memory-cell {
-  height: calc(var(--byte-count) * var(--memory-byte-height));
+.memory-cell.memory-written {
+  background: var(--highlight);
 }
 
-.memory-frame .memory-cell {
-  padding-block: 0;
-  overflow: hidden;
-  line-height: 16px;
+/* A row is never narrower than its contents: a 20-digit value or a long
+   label scrolls the region sideways instead of being cut off. */
+.section-cell {
+  width: 100%;
+  min-width: max-content;
 }
 
-/* Memory frames */
+.section-label {
+  display: inline-block;
+  white-space: nowrap;
+  color: var(--code-directive);
+  font-family: var(--mono);
+  font-size: 11.5px;
+  font-weight: 700;
+}
+
+.section-string {
+  color: var(--code-string);
+}
 
 .memory-frame {
-  --memory-byte-height: 2.6px;
   box-sizing: border-box;
   display: block;
   flex: 0 0 auto;
-  min-width: 0;
   width: 100%;
-  margin: 0;
-  padding: 0;
-  border: 1px solid var(--frame-color);
-  background-color: var(--frame-background);
+  min-width: max-content;
+  margin: 0 0 8px;
+  padding: 0 6px 6px;
+  border: 1px solid var(--frame-color, var(--border));
+  border-radius: var(--radius-sm);
+  background: var(--frame-background, var(--surface-sunken));
 }
 
+.memory-frame.active-frame {
+  box-shadow: 0 0 0 1px var(--frame-color, var(--accent));
+}
+
+/* The legend cuts the fieldset's top border where it sits, so it spans the
+   whole edge: a content-width legend leaves the border running through the
+   label as a strike-through. */
 .frame-header {
   box-sizing: border-box;
   width: calc(100% - 12px);
   max-width: calc(100% - 12px);
   margin-left: 6px;
   padding: 0 4px;
-  color: var(--frame-color);
-  font-family: monospace;
-  font-size: 12px;
-  font-weight: 600;
+  color: var(--frame-color, var(--text-h));
+  font-family: var(--mono);
+  font-size: 11.5px;
+  font-weight: 700;
   line-height: 16px;
+  /* Browsers differ on whether a legend cuts the fieldset's top border, and
+     an uncut border runs through the label as a strike-through. Painting the
+     frame's own background behind the label masks it either way. */
+  background: var(--frame-background, var(--surface-sunken));
 }
 
 .frame-heading {
@@ -597,24 +859,20 @@ body {
 }
 
 .frame-title {
-  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .frame-size {
-  flex-shrink: 0;
-  white-space: nowrap;
+  color: var(--muted);
+  font-weight: 400;
 }
 
 .frame-cells {
-  min-width: 0;
-}
-
-.memory-frame .memory-cell {
-  width: 100%;
-  color: var(--text, #333);
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
 }
 
 .stack-address {
@@ -623,60 +881,67 @@ body {
   gap: 4px;
 }
 
-.memory-frame .memory-cell .sp-marker {
-  font-size: 10px;
-  font-weight: 1000;
-  color: #333;
-}
-.memory-frame .memory-cell.memory-written {
-  background-color: light-dark(lightgray, #353844);
-  font-weight: bold;
+.sp-marker {
+  color: var(--accent);
+  font-weight: 700;
 }
 
-/* Recorded output and on-demand input */
-.stdout {
-  box-sizing: border-box;
-  flex: 0 0 130px;
-  min-height: 0;
+.heap-allocation .frame-heading {
+  flex-wrap: wrap;
+  gap: 0 8px;
+}
+
+.heap-contents {
   display: flex;
   flex-direction: column;
-  margin-top: 10px;
-  padding: 8px 10px;
-  border: 1px solid lightgray;
-  border-radius: 3px;
-  text-align: left;
-}
-
-.stdout h5 {
-  flex-shrink: 0;
-  margin: 0 0 4px;
-  font-size: 14px;
-}
-
-.stdout pre {
-  flex: 1;
-  min-height: 0;
-  margin: 0;
-  overflow: auto;
-  white-space: pre;
-  font: 13px/1.5 var(--mono);
+  gap: 1px;
+  font-family: var(--mono);
+  font-size: 12.5px;
   color: var(--text-h);
 }
 
-.stdout-empty {
-  color: var(--text);
+.heap-cell-address {
+  flex-shrink: 0;
 }
 
-.simulation-status {
+.heap-values {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Input dialog ------------------------------------------------------------ */
+
+.confirm-dialog {
   box-sizing: border-box;
-  flex: 0 0 52px;
-  overflow: auto;
+  width: min(440px, calc(100vw - 32px));
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text-h);
+  padding: 22px;
+  box-shadow: 0 20px 45px rgb(16 37 79 / 22%);
+}
+
+.confirm-dialog::backdrop {
+  background: rgb(10 18 35 / 45%);
+}
+
+.confirm-dialog h2 {
+  font-size: 19px;
+}
+
+.confirm-dialog p {
+  margin: 8px 0 18px;
+  color: var(--text);
+  font-size: 14.5px;
+}
+
+.confirm-actions {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 8px;
-  text-align: left;
-  font-size: 13px;
 }
 
 .stdin-dialog {
@@ -685,14 +950,15 @@ body {
   max-height: calc(100dvh - 32px);
   overflow: auto;
   border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--bg);
+  border-radius: var(--radius);
+  background: var(--surface);
   color: var(--text-h);
   padding: 20px;
+  box-shadow: 0 20px 45px rgb(16 37 79 / 22%);
 }
 
 .stdin-dialog::backdrop {
-  background: rgb(0 0 0 / 35%);
+  background: rgb(10 18 35 / 45%);
 }
 
 .stdin-dialog form {
@@ -701,17 +967,30 @@ body {
   gap: 10px;
 }
 
-.stdin-dialog h3,
-.stdin-dialog p {
-  margin: 0;
-}
-
 .stdin-dialog h3 {
   font-size: 18px;
 }
 
 .stdin-dialog p {
   font-size: 14px;
+}
+
+.stdin-dialog textarea {
+  box-sizing: border-box;
+  width: 100%;
+  resize: vertical;
+  padding: 8px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
+  color: var(--text-h);
+  font: 14px/1.5 var(--mono);
+}
+
+.stdin-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .visually-hidden {
@@ -726,32 +1005,26 @@ body {
   border: 0;
 }
 
-.stdin-dialog textarea {
-  box-sizing: border-box;
-  width: 100%;
-  resize: vertical;
-  font: 14px/1.5 var(--mono);
+/* Errors ------------------------------------------------------------------ */
+
+.assembly-visualizer,
+.guide-page {
+  --error-program: #a3301c;
+  --error-program-bg: #fdf1ef;
+  --error-program-border: #e7b4a9;
+  --error-tool: #7a5b16;
+  --error-tool-bg: #fbf5e6;
+  --error-tool-border: #ddc68c;
 }
 
-.stdin-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.stdin-actions button {
-  padding: 6px 10px;
-}
-
-/* --- error reporting ------------------------------------------------------ */
-
-.assembly-visualizer {
-  --error-program: light-dark(#a3301c, #f0907e);
-  --error-program-bg: light-dark(#fdf1ef, #2c1b18);
-  --error-program-border: light-dark(#e7b4a9, #6c382e);
-  --error-tool: light-dark(#7a5b16, #e0bd6a);
-  --error-tool-bg: light-dark(#fbf5e6, #2a2418);
-  --error-tool-border: light-dark(#ddc68c, #6a5a30);
+:root[data-theme='dark'] .assembly-visualizer,
+:root[data-theme='dark'] .guide-page {
+  --error-program: #e08d7c;
+  --error-program-bg: #251b19;
+  --error-program-border: #5a3831;
+  --error-tool: #cdb075;
+  --error-tool-bg: #221f18;
+  --error-tool-border: #544b33;
 }
 
 .error-message {
@@ -760,10 +1033,10 @@ body {
   flex-direction: column;
   gap: 6px;
   width: 100%;
-  padding: 8px 10px;
+  padding: 10px 12px;
   border: 1px solid var(--error-program-border);
   border-left-width: 3px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   background: var(--error-program-bg);
   text-align: left;
   font-size: 13px;
@@ -810,10 +1083,10 @@ body {
 
 .error-source {
   margin: 0;
-  padding: 4px 8px;
+  padding: 5px 9px;
   overflow-x: auto;
-  border-radius: 3px;
-  background: var(--code-bg);
+  border-radius: 4px;
+  background: var(--surface-sunken);
   font: 12px/1.5 var(--mono);
   color: var(--text-h);
   white-space: pre;
@@ -832,24 +1105,70 @@ body {
   font: 11px/1.5 var(--mono);
 }
 
-/* A long error must not squeeze the editor out of the panel. */
 .code-panel > .error-message {
   flex: 0 0 auto;
-  max-height: 35%;
-  overflow: auto;
-  margin-bottom: 12px;
-}
-
-.code-panel {
+  max-height: 30%;
   overflow: auto;
 }
 
-/* The status strip is sized for one line; an error needs its own height. */
-.simulation-status:has(.error-message) {
-  flex: 0 0 auto;
-  align-items: stretch;
+/* Narrow screens -----------------------------------------------------------
+
+   The panels stack and the page scrolls. Each panel whose contents can grow
+   still gets a height of its own, so its parts keep scrolling inside it. */
+
+@media (max-width: 1180px) {
+  .assembly-visualizer {
+    height: auto;
+  }
+
+  .workspace {
+    flex: 0 0 auto;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: none;
+  }
+
+  .panel {
+    height: auto;
+  }
+
+  .code-panel,
+  .ram-panel {
+    height: clamp(34rem, calc(100svh - 40px), 54rem);
+  }
 }
 
-.stdin-dialog .error-message {
-  font-size: 13px;
+@media (max-width: 640px) {
+  .assembly-visualizer {
+    padding: 16px 16px 20px;
+  }
+
+  .app-header h1 {
+    font-size: 25px;
+  }
+
+  .panel {
+    --panel-padding: 14px;
+  }
+
+  /* Each region gets a row of its own rather than half the width. */
+  .ram-panel {
+    height: auto;
+  }
+
+  .ram-grid {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: 26rem repeat(3, 13rem) 15rem;
+    grid-template-areas:
+      "stack"
+      "heap"
+      "data"
+      "bss"
+      "rodata";
+  }
+}
+
+@media (max-width: 520px) {
+  .register-tables {
+    grid-template-columns: minmax(min-content, 1fr);
+  }
 }

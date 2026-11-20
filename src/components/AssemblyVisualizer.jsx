@@ -3,14 +3,16 @@ import NextInstruction from "./NextInstruction";
 import CodeEditor from "./CodeEditor";
 import RegisterPanel from "./RegisterPanel";
 import MemoryPanel from "./MemoryPanel";
-import Section from "./Section";
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useImperativeHandle } from "react";
 import StdOut from "./StdOut";
 import StdIn from "./StdIn";
 import { extendHistory, stdoutAt, inputPrompt } from "../history";
 import { DEFAULT_RUN_DELAY, runDelayFrom } from "../runSpeed";
 import ErrorMessage from "./ErrorMessage";
 import { fromClient, fromResponse, fromTransport } from "../errors";
+import FlagsPanel from "./FlagsPanel";
+import { applyTheme, initialTheme } from "../theme";
+import PageNav from "./PageNav";
 
 // Carries the normalized error rather than a bare string, so the panel can
 // show the line, the source line and the suggestion alongside the message.
@@ -28,12 +30,22 @@ function registerSnapshot(history, index) {
     return exact ? registers.map((value, register) => exact[register] ?? value) : registers;
 }
 
-export default function AssemblyVisualizer() {
-   const [assemblyCode, setAssemblyCode] = useState(`mov x1, #20
+const STARTER_PROGRAM = `mov x1, #20
 mov x2, #5
 add x3, x1, x2
 sub x4, x1, x2
-mul x5, x3, x2`);
+mul x5, x3, x2`;
+
+// `ref` lets the How to use page put an example in the editor; `active` is
+// false while that page is showing and this workspace is kept, hidden.
+export default function AssemblyVisualizer({ ref, active = true }) {
+    const [assemblyCode, setAssemblyCode] = useState(STARTER_PROGRAM);
+    // The code as it last arrived from outside the editor: the starter
+    // program or an opened example. Anything else was written here.
+    const providedCode = useRef(STARTER_PROGRAM);
+    const [openedExample, setOpenedExample] = useState(null);
+    const loadButton = useRef(null);
+    const focusLoadWhenShown = useRef(false);
 
     const [history, setHistory] = useState(null);
     const [run, setRun] = useState(null);
@@ -54,6 +66,7 @@ mul x5, x3, x2`);
     const [runDelay, setRunDelay] = useState(String(DEFAULT_RUN_DELAY));
     const [addressFormat, setAddressFormat] = useState("hex");
     const [dataFormat, setDataFormat] = useState("dec");
+    const [theme, setTheme] = useState(initialTheme);
     const formats = { address: addressFormat, data: dataFormat };
 
     const exactStack = history?.exact_values?.[stepIndex]?.stack;
@@ -83,6 +96,17 @@ mul x5, x3, x2`);
     const pending = atEnd && !sourceChanged && history.status.state === 'waiting'
         ? history.status.pending : null;
     const dialogOpen = pending !== null && dismissedInput !== pending.occurrence;
+
+    useEffect(() => applyTheme(theme), [theme]);
+
+    useEffect(() => {
+        if (!active) return;
+        window.scrollTo(0, 0);
+        if (focusLoadWhenShown.current) {
+            focusLoadWhenShown.current = false;
+            loadButton.current?.focus();
+        }
+    }, [active]);
 
     const setRunIntent = useCallback((requested) => {
         runIntent.current = requested;
@@ -134,7 +158,34 @@ mul x5, x3, x2`);
         setRunIntent(false);
         setAssemblyCode(source);
         setIsRunning(false);
+        setOpenedExample(null);
     }
+
+    useImperativeHandle(ref, () => ({
+        // True when opening `source` would lose code written in the editor.
+        hasUnsavedCode(source) {
+            return assemblyCode.trim() !== ""
+                && assemblyCode !== providedCode.current
+                && assemblyCode !== source;
+        },
+        // Put a program in the editor with a clean slate, without running it.
+        openProgram(source, title) {
+            cancelRequest();
+            runId.current++;
+            setRunIntent(false);
+            setIsRunning(false);
+            providedCode.current = source;
+            setAssemblyCode(source);
+            setHistory(null);
+            setRun(null);
+            setStepIndex(0);
+            setLoadError(null);
+            setInputError(null);
+            setDismissedInput(null);
+            setOpenedExample(title);
+            focusLoadWhenShown.current = true;
+        },
+    }));
 
     async function simulate(settings, signal) {
         let response;
@@ -177,6 +228,7 @@ mul x5, x3, x2`);
         const request = beginRequest(settings.id);
         setRunIntent(false);
         setIsRunning(false);
+        setOpenedExample(null);
         setLoadError(null);
         setInputError(null);
         setDismissedInput(null);
@@ -275,18 +327,21 @@ mul x5, x3, x2`);
 
     return(
         <div className="assembly-visualizer">
-            <header className="visualizer-header">
-                <h1>Assembly Visualizer</h1>
+            <header className="app-header">
+                <div className="brand-group">
+                    <h1>Assembly Visualizer</h1>
+                    <PageNav current="visualizer" />
+                </div>
                 <div className="number-formats">
                     <label>
-                        Address Format
+                        Address Format:
                         <select value={addressFormat} onChange={(event) => setAddressFormat(event.target.value)}>
                             <option value="hex">Hex</option>
                             <option value="dec">Dec</option>
                         </select>
                     </label>
                     <label>
-                        Data Format
+                        Data Format:
                         <select value={dataFormat} onChange={(event) => setDataFormat(event.target.value)}>
                             <option value="hex">Hex</option>
                             <option value="dec">Dec</option>
@@ -294,17 +349,33 @@ mul x5, x3, x2`);
                     </label>
                 </div>
             </header>
-            
+
             <div className="workspace">
-                <div className="code-panel">
-                    <ExecutionControls onLoad={handleLoad} onNext = {handleNext} onBack={handleBack} onReset={handleReset} currentStep={stepIndex} totalSteps={history ? history.register_states.length - 1 : 0} onRun={handleRun} canPause={canPause} runDelay={runDelay} onRunDelayChange={setRunDelay} busy={busy} sourceChanged={sourceChanged} nextButtonRef={nextButton}/>
+                <section className="panel code-panel" aria-label="Code editor">
+                    <div className="panel-head">
+                        <h2>Code Editor</h2>
+                        <label className="theme-switch">
+                            Dark mode
+                            <input
+                                type="checkbox"
+                                role="switch"
+                                checked={theme === "dark"}
+                                onChange={(event) => setTheme(event.target.checked ? "dark" : "light")}
+                            />
+                            <span className="switch-track" aria-hidden="true" />
+                        </label>
+                    </div>
+
+                    <ExecutionControls onLoad={handleLoad} onNext={handleNext} onBack={handleBack} onReset={handleReset} currentStep={stepIndex} totalSteps={history ? history.register_states.length - 1 : 0} onRun={handleRun} canPause={canPause} runDelay={runDelay} onRunDelayChange={setRunDelay} busy={busy} sourceChanged={sourceChanged} nextButtonRef={nextButton} loadButtonRef={loadButton}/>
 
                     {loadError && <ErrorMessage error={loadError} formats={formats} />}
+
                     <CodeEditor
                         assemblyCode={assemblyCode}
                         setAssemblyCode={changeSource}
                         activeLine={sourceChanged ? null : history?.executed_lines[stepIndex]}
                     />
+
                     <NextInstruction
                         assemblyCode={run?.assembly_code ?? assemblyCode}
                         currentLine={history?.executed_lines?.[stepIndex]}
@@ -313,10 +384,15 @@ mul x5, x3, x2`);
                         explanationParts={history?.explanation_parts?.[stepIndex]}
                         formats={formats}
                     />
+
                     <StdOut key={run?.id ?? 'empty'} output={stdoutAt(history, stepIndex)} />
+
                     <div className="simulation-status" role="status">
+                        {openedExample && !history && <p>Opened “{openedExample}”. Select Load to run it.</p>}
                         {sourceChanged && <p>Source edited. Load to start a new run.</p>}
-                        {!sourceChanged && atEnd && history.status.state === 'completed' && <p>Execution complete.</p>}
+                        {!sourceChanged && atEnd && history.status.state === 'completed' && (
+                            <p>Execution complete.{history.status.returned && <> {history.status.returned.function} returned {history.status.returned.value}.</>}</p>
+                        )}
                         {!sourceChanged && atEnd && history.status.state === 'execution_limit' && <p>Execution stopped at the instruction limit.</p>}
                         {!sourceChanged && atEnd && history.status.state === 'error' && (
                             <ErrorMessage error={fromResponse(history.status)} formats={formats} />
@@ -329,34 +405,36 @@ mul x5, x3, x2`);
                             }}>Enter input</button>
                         </>}
                     </div>
-                </div>
-                <div className="register-column">
-                <div className="register-panel">
-                <RegisterPanel
-                    registerValues={registerSnapshot(history, stepIndex)}
-                    previousRegisterValues={stepIndex > 0 ? registerSnapshot(history, stepIndex - 1) : null}
-                    pointerRegisters={history?.pointer_states?.[stepIndex]}
-                    formats={formats}
-                />                </div>
-                <div className="rodata-panel">
-                <Section
-                    name=".rodata"
-                    section={sectionContents?.find((section) => section.name === ".rodata")}
-                    formats={formats}
-                    memoryAccesses={history?.memory_accesses?.[stepIndex]}
-                />                </div>
-                </div>
-                <div className="memory-panel">
-                <MemoryPanel
-                    stackValues={stackValues}
-                    heapAllocations={heapAllocations}
-                    frameValues={history?.frame_states?.[stepIndex]}
-                    formats={formats}
-                    stackPointer={history?.register_states?.[stepIndex]?.[31]}
-                    memoryAccesses={history?.memory_accesses?.[stepIndex]}
-                    sections={sectionContents}
-                />                </div>
+                </section>
+
+                <section className="panel registers-panel" aria-label="Registers">
+                    <h2>Registers</h2>
+                    <RegisterPanel
+                        registerValues={registerSnapshot(history, stepIndex)}
+                        previousRegisterValues={stepIndex > 0 ? registerSnapshot(history, stepIndex - 1) : null}
+                        pointerRegisters={history?.pointer_states?.[stepIndex]}
+                        formats={formats}
+                    />
+                    <FlagsPanel
+                        registerValues={registerSnapshot(history, stepIndex)}
+                        formats={formats}
+                    />
+                </section>
+
+                <section className="panel ram-panel" aria-label="RAM">
+                    <h2>RAM</h2>
+                    <MemoryPanel
+                        stackValues={stackValues}
+                        heapAllocations={heapAllocations}
+                        frameValues={history?.frame_states?.[stepIndex]}
+                        formats={formats}
+                        stackPointer={history?.register_states?.[stepIndex]?.[31]}
+                        memoryAccesses={history?.memory_accesses?.[stepIndex]}
+                        sections={sectionContents}
+                    />
+                </section>
             </div>
+
             {dialogOpen && (
                 <StdIn key={pending.request_id} prompt={inputPrompt(history, pending)} busy={busy}
                     error={inputError} formats={formats}

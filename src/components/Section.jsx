@@ -85,7 +85,7 @@ export default function Section({ name, section, formats, memoryAccesses = [] })
     }
 
     return (
-        <div className="section-region">
+        <div className={`section-region section-region-${name.replace(".", "")}`}>
             <h5 title={size ? `${name} · ${formatNumber(address, formats.address)} · ${formatNumber(size, formats.data)} B` : `${name} · empty`}>
                 {name}
             </h5>

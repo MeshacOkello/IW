@@ -1,0 +1,658 @@
+/* How to use page --------------------------------------------------------- */
+
+.guide-page {
+  box-sizing: border-box;
+  min-height: 100svh;
+  padding: 20px 24px 48px;
+  background: linear-gradient(180deg, var(--page) 0%, var(--page-edge) 100%);
+  color: var(--text);
+  text-align: left;
+}
+
+:root[data-theme='dark'] .guide-page {
+  background: var(--page);
+}
+
+.guide-header {
+  margin-bottom: 18px;
+}
+
+.brand {
+  text-decoration: none;
+}
+
+.guide-layout {
+  display: grid;
+  grid-template-columns: 228px minmax(0, 1fr);
+  gap: 22px;
+  align-items: start;
+}
+
+/* Side navigation */
+
+.guide-sidebar {
+  position: sticky;
+  top: 20px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.sidebar-title {
+  padding: 0 10px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.guide-sidebar ol {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.guide-sidebar ol a {
+  display: block;
+  padding: 7px 10px;
+  border-radius: var(--radius-sm);
+  color: var(--text-h);
+  font-size: 14.5px;
+  text-decoration: none;
+}
+
+.guide-sidebar ol a:hover {
+  background: var(--surface-head);
+}
+
+.guide-sidebar ol a[aria-current='location'] {
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 600;
+}
+
+.button {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 7px 13px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text-h);
+  font-size: 14px;
+  text-decoration: none;
+}
+
+.button:hover {
+  background: var(--surface-head);
+}
+
+.back-link {
+  margin: 0 4px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+  border-width: 1px 0 0;
+  border-radius: 0;
+  background: transparent;
+  justify-content: flex-start;
+}
+
+.back-link:hover {
+  background: transparent;
+  color: var(--accent);
+}
+
+/* Content */
+
+.guide-content {
+  box-sizing: border-box;
+  min-width: 0;
+  padding: 28px 34px 36px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  font-size: 15.5px;
+  line-height: 1.6;
+}
+
+.guide-content h1 {
+  font-size: 34px;
+  letter-spacing: -0.6px;
+  line-height: 1.2;
+}
+
+.guide-lede {
+  margin-top: 6px;
+  color: var(--text);
+  font-size: 16.5px;
+}
+
+.guide-content code,
+.guide-content kbd {
+  font-family: var(--mono);
+  font-size: 0.88em;
+}
+
+/* Inline code in prose; highlighted tokens and chips carry a class. */
+.guide-content code:not([class]) {
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--surface-sunken);
+  color: var(--text-h);
+}
+
+.guide-content kbd {
+  padding: 1px 6px;
+  border: 1px solid var(--border-strong);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  background: var(--surface-sunken);
+  color: var(--text-h);
+}
+
+.guide-content strong {
+  color: var(--text-h);
+}
+
+.guide-section {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-top: 30px;
+  padding-top: 26px;
+  border-top: 1px solid var(--border);
+  /* Clears the page top when a section link scrolls it into view. */
+  scroll-margin-top: 16px;
+}
+
+.guide-section:first-of-type {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.guide-section h2 {
+  font-size: 26px;
+  letter-spacing: -0.4px;
+  line-height: 1.25;
+}
+
+.guide-section h2:focus {
+  outline: none;
+}
+
+.guide-section h2:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 4px;
+  border-radius: 4px;
+}
+
+.section-number {
+  color: var(--heading-ink);
+}
+
+.section-intro {
+  margin-top: -10px;
+  color: var(--text);
+}
+
+.subheading {
+  margin-top: 4px;
+  font-size: 18px;
+}
+
+.callout,
+.note {
+  padding: 11px 15px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-head);
+  color: var(--text-h);
+}
+
+.note {
+  background: transparent;
+  border: 1px dashed var(--border-strong);
+  color: var(--text);
+  font-size: 14.5px;
+}
+
+/* Stepper */
+
+.stepper {
+  display: flex;
+  align-items: center;
+  margin: 2px 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: none;
+}
+
+.stepper li {
+  display: flex;
+  flex: 1 1 0;
+  align-items: center;
+  gap: 10px;
+  color: var(--heading-ink);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.stepper li:not(:last-child)::after {
+  content: "";
+  flex: 1;
+  height: 2px;
+  margin: 0 14px;
+  background: var(--border-strong);
+}
+
+.stepper li:last-child {
+  flex: 0 0 auto;
+}
+
+.stepper span {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-size: 14px;
+}
+
+.split {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.15fr);
+  gap: 26px;
+  align-items: start;
+}
+
+.split > div {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.control-list,
+.plain-list {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.control-list li,
+.plain-list li {
+  position: relative;
+  padding-left: 20px;
+}
+
+.control-list li::before,
+.plain-list li::before {
+  content: "";
+  position: absolute;
+  top: 0.65em;
+  left: 4px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+/* Definitions */
+
+.terms {
+  display: grid;
+  gap: 14px 28px;
+  margin: 0;
+}
+
+.terms.two-column {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.term dt {
+  color: var(--heading-ink);
+  font-weight: 700;
+}
+
+.term dd {
+  margin: 2px 0 0;
+}
+
+.support-terms .term {
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr);
+  gap: 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.support-terms .term:last-child {
+  border-bottom: 0;
+}
+
+.support-terms dd {
+  margin: 0;
+}
+
+.flag-terms {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0;
+}
+
+.flag-terms .term {
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.flag-terms dt {
+  font-family: var(--mono);
+  font-size: 18px;
+}
+
+/* What changed */
+
+.change-demo {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px 22px;
+}
+
+.guide-content .change-chip {
+  padding: 8px 22px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
+  font-family: var(--mono);
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.guide-content .change-chip.changed {
+  background: var(--highlight);
+  border-color: transparent;
+}
+
+.change-divider {
+  margin: 0 8px;
+  color: var(--muted);
+}
+
+.change-arrow {
+  color: var(--text-h);
+  font-size: 22px;
+}
+
+.syntax-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 14px;
+}
+
+.syntax-legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.syntax-legend code {
+  font-size: 13.5px;
+}
+
+.written-sample {
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--highlight);
+  color: var(--text-h);
+}
+
+/* Examples */
+
+.example-card {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+  padding: 18px 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-head);
+}
+
+.example-card.example-error {
+  border-color: var(--error-program-border);
+  border-left: 4px solid var(--error-program);
+  background: var(--error-program-bg);
+}
+
+.example-head h3 {
+  font-size: 20px;
+}
+
+.example-objective {
+  margin-top: 2px;
+  color: var(--text);
+  font-size: 14.5px;
+}
+
+.example-flag {
+  margin-bottom: 4px;
+  color: var(--error-program);
+  font: 700 11.5px/1.4 var(--sans);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.code-block {
+  margin: 0;
+  padding: 10px 0;
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text-h);
+  font: 13.5px/22px var(--mono);
+  tab-size: 4;
+}
+
+.code-block:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+
+.code-block code {
+  display: grid;
+  min-width: max-content;
+  font-size: inherit;
+}
+
+.code-line {
+  display: grid;
+  grid-template-columns: 3.2em max-content;
+}
+
+.code-line-number {
+  padding-right: 14px;
+  color: var(--muted);
+  text-align: right;
+  user-select: none;
+}
+
+.code-line-text {
+  padding-right: 16px;
+  white-space: pre;
+}
+
+.example-expected {
+  font-size: 14.5px;
+  line-height: 1.9;
+}
+
+.result-chip {
+  padding: 2px 8px;
+  border-radius: 5px;
+  background: var(--highlight);
+  color: var(--text-h);
+  white-space: nowrap;
+}
+
+.example-error .result-chip {
+  background: var(--surface);
+}
+
+.example-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.example-actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 14px;
+}
+
+.example-copy-status {
+  color: var(--error-program);
+  font-size: 13.5px;
+}
+
+.example-note {
+  margin-top: -4px;
+  color: var(--muted);
+  font-size: 13.5px;
+}
+
+/* Narrow screens ----------------------------------------------------------- */
+
+@media (max-width: 1080px) {
+  .split {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .flag-terms {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* The side navigation becomes a strip of links that stays at the top. */
+@media (max-width: 860px) {
+  .guide-layout {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 14px;
+  }
+
+  .guide-sidebar {
+    top: 0;
+    z-index: 2;
+    padding: 8px;
+    border-radius: 0 0 var(--radius) var(--radius);
+    margin: 0 -4px;
+  }
+
+  .sidebar-title,
+  .back-link {
+    display: none;
+  }
+
+  .guide-sidebar ol {
+    flex-direction: row;
+    margin: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .guide-sidebar ol a {
+    white-space: nowrap;
+  }
+
+  /* Clears the sticky strip of section links as well. */
+  .guide-section {
+    scroll-margin-top: 72px;
+  }
+
+  .terms.two-column {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .support-terms .term {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2px;
+  }
+}
+
+@media (max-width: 640px) {
+  .guide-page {
+    padding: 16px 16px 32px;
+  }
+
+  .app-header .brand {
+    font-size: 24px;
+  }
+
+  .guide-content {
+    padding: 20px 16px 26px;
+  }
+
+  .guide-content h1 {
+    font-size: 28px;
+  }
+
+  .guide-section h2 {
+    font-size: 22px;
+  }
+
+  .example-card {
+    padding: 14px;
+  }
+
+  .stepper li {
+    flex-direction: column;
+    gap: 4px;
+    font-size: 13px;
+    white-space: normal;
+    text-align: center;
+  }
+
+  .stepper li:not(:last-child)::after {
+    display: none;
+  }
+
+  .guide-content .change-chip {
+    font-size: 15px;
+    padding: 6px 14px;
+  }
+}

@@ -2,8 +2,10 @@ import Stack from "./Stack";
 import Heap from "./Heap";
 import Section from "./Section";
 
-// .text has no visualization, and .rodata sits under the registers.
-const SECTION_NAMES = [".data", ".bss"];
+// .text holds code rather than data, so it has no visualization here.
+// Every region is laid out at once: the panel never scrolls, and a region
+// with more rows than it can show scrolls inside itself.
+const SECTION_NAMES = [".data", ".bss", ".rodata"];
 
 export default function MemoryPanel({
     stackValues,
@@ -17,38 +19,28 @@ export default function MemoryPanel({
     const layout = new Map((sections ?? []).map((section) => [section.name, section]));
 
     return (
-        <div>
-            <div className="memory-header">
-                <h5>Memory</h5>
-
-            </div>
-
-            <div className="memory-columns">
-                <Stack
-                    stackValues={stackValues}
-                    frameValues={frameValues}
+        <div className="ram-grid">
+            <Stack
+                stackValues={stackValues}
+                frameValues={frameValues}
+                formats={formats}
+                stackPointer={stackPointer}
+                memoryAccesses={memoryAccesses}
+            />
+            <Heap
+                allocations={heapAllocations}
+                formats={formats}
+                memoryAccesses={memoryAccesses}
+            />
+            {SECTION_NAMES.map((name) => (
+                <Section
+                    key={name}
+                    name={name}
+                    section={layout.get(name)}
                     formats={formats}
-                    stackPointer={stackPointer}
                     memoryAccesses={memoryAccesses}
                 />
-                <Heap
-                    allocations={heapAllocations}
-                    formats={formats}
-                    memoryAccesses={memoryAccesses}
-                />
-            </div>
-
-            <div className="section-columns">
-                {SECTION_NAMES.map((name) => (
-                    <Section
-                        key={name}
-                        name={name}
-                        section={layout.get(name)}
-                        formats={formats}
-                        memoryAccesses={memoryAccesses}
-                    />
-                ))}
-            </div>
+            ))}
         </div>
     );
 }

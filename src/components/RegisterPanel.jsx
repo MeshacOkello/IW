@@ -13,7 +13,6 @@ export default function RegisterPanel({
     formats,
 }) {
     const pointers = new Set(pointerRegisters);
-    const nzcv = registerValues[33];
 
     function changed(index) {
         return previousRegisterValues && registerValues[index] !== previousRegisterValues[index]
@@ -26,7 +25,7 @@ export default function RegisterPanel({
         const label = index === 31 ? "sp" : index === 32 ? "pc" : `x${index}`;
         return (
             <tr className={changed(index)} key={index}>
-                <td>{label}</td>
+                <th scope="row">{label}</th>
                 <td className={isAddress ? "address-value" : undefined}>
                     {formatNumber(registerValues[index], isAddress ? formats.address : formats.data)}
                 </td>
@@ -35,35 +34,18 @@ export default function RegisterPanel({
     }
 
     return (
-        <>
-            <div className="register-header">
-                <h5>Registers</h5>
-                <div className="register-options">
-                    <button>64-bit x</button>
-                    <button>32-bit w</button>
-                </div>
-            </div>
-
-            <div className="register-tables">
-                <table>
-                    <tbody>{REGISTER_COLUMNS[0].map(renderRegister)}</tbody>
-                </table>
-                <table>
-                    <tbody>
-                        {REGISTER_COLUMNS[1].map(renderRegister)}
-                        <tr className={changed(33)}>
-                            <td>NZCV</td>
-                            <td>
-                                <div className="nzcv-flags">
-                                    {[..."NZCV"].map((flag, index) => (
-                                        <span key={flag}>{flag} {formatNumber((nzcv >>> (31 - index)) & 1, formats.data)}</span>
-                                    ))}
-                                </div>
-                            </td>
+        <div className="register-tables">
+            {REGISTER_COLUMNS.map((column, index) => (
+                <table key={index}>
+                    <thead>
+                        <tr>
+                            <th scope="col">Reg</th>
+                            <th scope="col">Value</th>
                         </tr>
-                    </tbody>
+                    </thead>
+                    <tbody>{column.map(renderRegister)}</tbody>
                 </table>
-            </div>
-        </>
+            ))}
+        </div>
     );
 }
