@@ -5,7 +5,9 @@ from heap import HEAP_END, HEAP_START, HeapError
 
 MAX_IO_BYTES = 1 << 16
 MAX_STREAM_BYTES = 1 << 20
+# The C locale's whitespace: space, \t, \n, \v, \f and \r.
 WHITESPACE = b' \t\n\r\v\f'
+EOF = -1
 
 
 class LibraryError(HeapError):
@@ -79,7 +81,48 @@ def integer(value, bits, signed=False):
     return value - (1 << bits) if signed and value & (1 << (bits - 1)) else value
 
 
+def isspace(value):
+    """C-locale isspace on the int argument in w0.
+
+    C defines isspace only for EOF and values an unsigned char can hold; any
+    other argument is undefined behaviour, usually a character that was
+    sign-extended (ldrsb) or an int that never held a character. The
+    simulator reports that instead of guessing. True is returned as 1.
+    """
+    argument = integer(value, 32, signed=True)
+    if argument != EOF and not 0 <= argument <= 255:
+        raise LibraryError(
+            'isspace requires EOF (-1) or a character value from 0 to 255, but w0 holds ',
+            {'kind': 'data', 'value': str(argument)}, '.')
+    return 1 if argument != EOF and argument in WHITESPACE else 0
+
+
+PRINTF_FLAGS = b'-+ #0'
+
+
+def printf_width(fmt, index):
+    """A literal decimal field width at `index`, as (width, next index).
+
+    The width is bounded before any padding is built: a field can never be
+    wider than one printf call's output limit.
+    """
+    width = 0
+    while index < len(fmt) and ord('0') <= fmt[index] <= ord('9'):
+        width = width * 10 + fmt[index] - ord('0')
+        index += 1
+        if width > MAX_IO_BYTES:
+            raise LibraryError(
+                'This printf format asks for a field width over 65536, the most one printf call '
+                'can print.', kind='unsupported')
+    return width, index
+
+
 def printf_parts(fmt):
+    """Literal bytes and (conversion, width) pairs for a printf format.
+
+    Of the conversion specification only a literal decimal field width is
+    supported, as in %7ld; flags, precision and * widths are refused.
+    """
     parts = []
     literal = bytearray()
     index = 0
@@ -96,6 +139,19 @@ def printf_parts(fmt):
         if literal:
             parts.append(bytes(literal))
             literal.clear()
+        if index < len(fmt) and fmt[index] in PRINTF_FLAGS:
+            raise LibraryError(
+                f"This printf format uses the '{chr(fmt[index])}' flag, which the simulator does not "
+                'support. A plain field width such as %7ld is supported.', kind='unsupported')
+        if index < len(fmt) and fmt[index] == ord('*'):
+            raise LibraryError(
+                'This printf format takes its field width from an argument (*), which the simulator '
+                'does not support. Write the width in the format, as in %7ld.', kind='unsupported')
+        width, index = printf_width(fmt, index)
+        if index < len(fmt) and fmt[index] == ord('.'):
+            raise LibraryError(
+                'This printf format has a precision (.), which the simulator does not support.',
+                kind='unsupported')
         modifier = b''
         if index < len(fmt) and fmt[index] == ord('l'):
             modifier = b'l'
@@ -108,7 +164,7 @@ def printf_parts(fmt):
         if conversion not in (b'd', b'u', b'ld', b'lu', b'c', b's', b'p'):
             raise LibraryError(
                 'This printf conversion is not one the simulator supports.', kind='unsupported')
-        parts.append(conversion.decode('ascii'))
+        parts.append((conversion.decode('ascii'), width))
     if literal:
         parts.append(bytes(literal))
     return parts
@@ -165,21 +221,30 @@ class Stdio:
             index = 1
             for part in parts:
                 if isinstance(part, bytes):
-                    output.extend(part)
+                    text = part
                 else:
+                    conversion, width = part
                     value = argument(index)
                     index += 1
-                    if part in ('d', 'u', 'ld', 'lu'):
-                        bits = 64 if part.startswith('l') else 32
-                        output.extend(str(integer(value, bits, part.endswith('d'))).encode('ascii'))
-                    elif part == 'c':
-                        output.append(value & 255)
-                    elif part == 's':
-                        output.extend(memory.c_string(value))
+                    if conversion in ('d', 'u', 'ld', 'lu'):
+                        bits = 64 if conversion.startswith('l') else 32
+                        text = str(integer(value, bits, conversion.endswith('d'))).encode('ascii')
+                    elif conversion == 'c':
+                        text = bytes([value & 255])
+                    elif conversion == 's':
+                        text = memory.c_string(value)
                     else:
-                        output.extend(f'0x{value:x}'.encode('ascii'))
-                if len(output) > MAX_IO_BYTES:
+                        text = f'0x{value:x}'.encode('ascii')
+                    # Pad on the left to the field width, counted in bytes as C
+                    # does; a longer value is printed whole, never cut.
+                    if width > len(text):
+                        if len(output) + width > MAX_IO_BYTES:
+                            raise LibraryError('printf output exceeds 65536 bytes per call',
+                                               kind='unsupported')
+                        text = b' ' * (width - len(text)) + text
+                if len(output) + len(text) > MAX_IO_BYTES:
                     raise LibraryError('printf output exceeds 65536 bytes per call', kind='unsupported')
+                output.extend(text)
             self.emit(output)
             return len(output)
         if name == 'puts':

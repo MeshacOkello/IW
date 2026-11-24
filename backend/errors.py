@@ -439,6 +439,10 @@ HEAP_SUGGESTIONS = (
     ('unterminated string',
      'A C string ends with a 0 byte. Use .asciz rather than .ascii, and make sure '
      'the pointer reaches the terminator.'),
+    ('isspace requires',
+     'Pass isspace a character as getchar returns it: a value from 0 to 255, or EOF. '
+     'A byte loaded with ldrsb is sign-extended and can be negative; load characters '
+     'with ldrb instead.'),
     ('invalid',
      'The register used as the pointer does not hold an address the program owns. '
      'Check how it was computed.'),

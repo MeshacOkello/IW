@@ -113,11 +113,14 @@ export default function HowToUse({ section, hasUnsavedCode, onOpenExample }) {
                         <ReferenceTable headings={["Control", "Action"]} rows={[
                             ["Next", "Moves forward one instruction."],
                             ["Back", "Shows the previous state."],
-                            ["Run / Pause", "Starts or pauses playback of recorded steps."],
+                            ["Run / Pause", "Starts or pauses playback of recorded steps. Run stops at the next breakpoint."],
+                            ["Jump to breakpoint", "Jumps straight to the next breakpoint, or to the end (or the pending input) if none is ahead."],
                             ["Speed", "Sets the delay between steps, from 0 ms to 5 s."],
                             ["Reset", "Returns to step 0."],
-                            ["Step counter", "Shows the selected step and the total recorded steps."],
+                            ["Step counter", "Shows the selected step and the total recorded steps. Select the step number (Edit step) to type any step and jump there; the card shows which line that step comes after, with shortcuts to the start, the end, and the breakpoint stops ahead."],
+                            ["Set breakpoint", "Then click any line, or its line number, to set a breakpoint; the line is highlighted in red. Click a highlighted line the same way to clear it. Esc cancels."],
                         ]} />
+                        <p>A breakpoint pauses before its line runs: the panels show the state just before it, and the editor outlines the breakpoint line with a dashed border. Select Run or Jump to breakpoint again to go past it; a breakpoint inside a loop stops on every pass. Breakpoints are kept when you edit, unless their line is removed. In predict mode they are shown but do not stop anything.</p>
                         <p>After editing, select Load again. Until then, the panels show the previous run and Next and Run are disabled. Opening the guide and returning preserves your code and selected step.</p>
                         <p>The simulator starts at <code>main</code> if defined, otherwise at the first instruction. It stops when main returns or execution reaches the end of the code.</p>
                         <CodeExample example={ex.arithmetic} onOpen={requestOpen} />
@@ -128,7 +131,7 @@ export default function HowToUse({ section, hasUnsavedCode, onOpenExample }) {
                         <ReferenceTable headings={["Setting or key", "Effect"]} rows={[
                             ["Addresses", "Formats memory addresses, sp, pc, and values tracked as pointers in hex or decimal."],
                             ["Data", "Formats other numeric values in hex or decimal."],
-                            ["Dark editor", "Changes the editor theme. The choice is saved in this browser."],
+                            ["Dark editor", "The switch in the editor's top-right corner changes the editor theme. The choice is saved in this browser."],
                             [<kbd>Tab</kbd>, "Indents the selected lines."],
                             [<><kbd>Shift</kbd> + <kbd>Tab</kbd></>, "Removes indentation."],
                             [<kbd>Esc</kbd>, "Releases keyboard focus from the editor so Tab can move to the next control."],
@@ -173,13 +176,14 @@ export default function HowToUse({ section, hasUnsavedCode, onOpenExample }) {
 
                     <Section id="input-output" title="Input & output">
                         <p>When execution needs input, playback pauses and an input dialog opens. Enter text and select Submit. In this simulator, Submit sends the text without adding a newline and then ends the input stream. Supply all remaining input together, such as <code>18 12</code> for two integer reads.</p>
-                        <p><kbd>Esc</kbd> closes the dialog while leaving the program waiting. Enter input reopens it. Stdout shows output up to the selected step, preserving spaces and line breaks. It follows new output while scrolled to the bottom.</p>
+                        <p>In the input box, <kbd>Tab</kbd> types a tab character. Press <kbd>Esc</kbd> once to make the next <kbd>Tab</kbd> move to Submit; press <kbd>Esc</kbd> again to close the dialog while leaving the program waiting. Enter input reopens it. Stdout shows output up to the selected step, preserving spaces and line breaks. It follows new output while scrolled to the bottom.</p>
                         <ReferenceTable headings={["Simulated call", "Supported behavior"]} rows={[
-                            [<code>printf</code>, <>Literal text, <code>%%</code>, <code>%d</code>, <code>%u</code>, <code>%ld</code>, <code>%lu</code>, <code>%c</code>, <code>%s</code>, and <code>%p</code>.</>],
+                            [<code>printf</code>, <>Literal text, <code>%%</code>, <code>%d</code>, <code>%u</code>, <code>%ld</code>, <code>%lu</code>, <code>%c</code>, <code>%s</code>, and <code>%p</code>, each with an optional field width such as <code>%7ld</code>. A shorter value is padded on the left with spaces and a longer one is printed in full; the returned count includes the padding. Flags, precision, and <code>*</code> widths are not supported.</>],
                             [<code>puts / putchar</code>, "Print a string followed by a newline / print one byte."],
                             [<code>scanf</code>, <>One <code>%d</code> or <code>%ld</code> conversion per call.</>],
                             [<code>fgets</code>, "Buffer address in x0, size in w1, and 0 in x2 for simulated stdin. Reads at most size − 1 bytes and adds a null terminator on success."],
                             [<code>getchar</code>, "Reads one byte, or returns EOF when input is exhausted."],
+                            [<code>isspace</code>, <>Takes the character in <code>w0</code> and returns nonzero (1) for space, tab, newline, vertical tab, form feed, and carriage return, or 0 otherwise, as in the C locale. Accepts EOF or a value from 0 to 255; anything else stops with an error.</>],
                         ]} />
                         <CodeExample example={ex.greeting} onOpen={requestOpen} />
                     </Section>
@@ -202,7 +206,7 @@ export default function HowToUse({ section, hasUnsavedCode, onOpenExample }) {
                             ["Constants", <><code>.equ</code> and <code>.set</code>, defined before use, with or without <code>#</code> on operands.</>],
                             ["Data directives", <><code>.string</code>, <code>.asciz</code>, <code>.ascii</code>, <code>.byte</code>, <code>.word</code>, <code>.quad</code>, <code>.skip</code>, and <code>.align</code>.</>],
                             ["Metadata", <><code>.global</code>, <code>.type</code>, and <code>.size</code> are accepted without affecting execution.</>],
-                            ["Library calls", <><code>printf</code>, <code>puts</code>, <code>putchar</code>, <code>getchar</code>, <code>fgets</code>, <code>scanf</code>, <code>malloc</code>, <code>free</code>, and <code>labs</code>, called with <code>bl</code>. A source-defined function with the same name takes precedence.</>],
+                            ["Library calls", <><code>printf</code>, <code>puts</code>, <code>putchar</code>, <code>getchar</code>, <code>fgets</code>, <code>scanf</code>, <code>malloc</code>, <code>free</code>, <code>labs</code>, and <code>isspace</code>, called with <code>bl</code>. A source-defined function with the same name takes precedence.</>],
                             ["Limits", "10,000 instructions per run, 4 KiB of stack, 16 KiB of heap, and 256 nested calls. Input and output each have a 1 MiB limit."],
                             ["Unavailable", "Macros, other sections, file I/O, and instructions that expand into multiple machine instructions. Instructions outside the explained subset may execute without an explanation."],
                         ]} />

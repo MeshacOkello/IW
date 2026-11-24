@@ -761,6 +761,23 @@ def explain_step(line, before, after, before_stack, accesses, numbers, before_po
         return str(error)
 
 
+WHITESPACE_NAMES = {32: 'a space', 9: 'a tab', 10: 'a newline', 11: 'a vertical tab',
+                    12: 'a form feed', 13: 'a carriage return'}
+
+
+def explain_isspace(argument, result, numbers):
+    value = argument & 0xffffffff
+    value = value - (1 << 32) if value >= 1 << 31 else value
+    if value == -1:
+        return f"isspace(EOF) returns {numbers.data(result)} in w0: EOF is not a whitespace character."
+    if result:
+        return (f"isspace({numbers.data(value)}) returns {numbers.data(result)} in w0, meaning true: "
+                f"{numbers.data(value)} is {WHITESPACE_NAMES[value]}.")
+    shown = f" ('{chr(value)}')" if 33 <= value < 127 else ''
+    return (f"isspace({numbers.data(value)}){shown} returns {numbers.data(result)} in w0, meaning false: "
+            "it is not a whitespace character.")
+
+
 def explain_heap_call(call, argument, result, numbers):
     if call == 'malloc':
         if result == 0:
@@ -783,6 +800,8 @@ def explain_heap_call(call, argument, result, numbers):
             return (f"labs({numbers.data(value)}) has no positive long result, because the largest long is "
                     f"{numbers.data((1 << 63) - 1)}. The simulator returns {numbers.data(value)} unchanged in x0; C does not define labs for this value.")
         return f"labs returns the absolute value of {numbers.data(value)}, which is {numbers.data(abs(value))}, in x0."
+    if call == 'isspace':
+        return explain_isspace(argument, result, numbers)
     if call in ('printf', 'puts', 'putchar'):
         return f"{call} writes to stdout and returns {numbers.data(result)} in w0."
     if argument == 0:

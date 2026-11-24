@@ -1,8 +1,9 @@
-import ExecutionControls from "./ExecutionControls";
+import ExecutionControls, { PlaybackSettings } from "./ExecutionControls";
 import NextInstruction from "./NextInstruction";
 import CodeEditor from "./CodeEditor";
 import RegisterPanel from "./RegisterPanel";
 import MemoryPanel from "./MemoryPanel";
+import Section from "./Section";
 import { useState, useEffect, useRef, useCallback, useImperativeHandle } from "react";
 import StdOut from "./StdOut";
 import StdIn from "./StdIn";
@@ -14,6 +15,7 @@ import FlagsPanel from "./FlagsPanel";
 import { applyTheme, initialTheme } from "../theme";
 import PredictPanel from "./PredictPanel";
 import { checkPredictions, emptyScore, predictionFields, recordCheck } from "../predict";
+import { breakpointSteps, clampBreakpoints, isBreakpointStop, nextBreakpointStep, stepSummary, toggleBreakpoint } from "../timeline";
 
 // Carries the normalized error rather than a bare string, so the panel can
 // show the line, the source line and the suggestion alongside the message.
@@ -74,6 +76,12 @@ export default function AssemblyVisualizer({ ref, active = true, formats }) {
     const [question, setQuestion] = useState(null);
     const [review, setReview] = useState(null);
     const [score, setScore] = useState(emptyScore);
+
+    // Breakpoints are source line numbers. While `pickingBreakpoint` is on,
+    // a click on any line (or its number) sets or clears one.
+    const [breakpoints, setBreakpoints] = useState(() => new Set());
+    const [pickingBreakpoint, setPickingBreakpoint] = useState(false);
+    const breakpointButton = useRef(null);
 
     const exactStack = history?.exact_values?.[stepIndex]?.stack;
     const stackValues = history?.stack_states[stepIndex]?.map((cell) =>
@@ -215,6 +223,35 @@ export default function AssemblyVisualizer({ ref, active = true, formats }) {
         setIsRunning(false);
         setOpenedExample(null);
         clearPrediction();
+        setBreakpoints((current) => clampBreakpoints(current, source.split("\n").length));
+    }
+
+    function pickBreakpoint(line) {
+        setBreakpoints((current) => toggleBreakpoint(current, line));
+        setPickingBreakpoint(false);
+        breakpointButton.current?.focus();
+    }
+
+    function cancelPicking() {
+        setPickingBreakpoint(false);
+        breakpointButton.current?.focus();
+    }
+
+    // Jump straight to a recorded step, as Back does: playback stops and an
+    // open prediction is dropped without scoring.
+    function jumpToStep(step) {
+        if (history == null || busyRef.current || sourceChanged) return;
+        setRunIntent(false);
+        setIsRunning(false);
+        clearPrediction();
+        setStepIndex(Math.max(0, Math.min(step, history.register_states.length - 1)));
+    }
+
+    // The next breakpoint stop, or the end of what is recorded: the finished
+    // run, or the input call it is waiting at.
+    function handleJumpToBreakpoint() {
+        if (history == null || predictMode) return;
+        jumpToStep(nextBreakpointStep(history, stepIndex, breakpoints) ?? history.register_states.length - 1);
     }
 
     useImperativeHandle(ref, () => ({
@@ -240,6 +277,8 @@ export default function AssemblyVisualizer({ ref, active = true, formats }) {
             setDismissedInput(null);
             setOpenedExample(title);
             resetScore();
+            setBreakpoints(new Set());
+            setPickingBreakpoint(false);
             focusLoadWhenShown.current = true;
         },
     }));
@@ -383,7 +422,12 @@ export default function AssemblyVisualizer({ ref, active = true, formats }) {
         const timer = setTimeout(() => {
             const nextStep = stepIndex + 1;
             setStepIndex(nextStep);
-            if (nextStep === lastStep) {
+            // Only the step being entered is checked, never the one Run started
+            // from, so Run on a breakpoint carries on past it.
+            if (!predictMode && isBreakpointStop(history, nextStep, breakpoints)) {
+                setRunIntent(false);
+                setIsRunning(false);
+            } else if (nextStep === lastStep) {
                 // Waiting pauses playback without cancelling the student's Run.
                 if (history.status.state !== 'waiting') setRunIntent(false);
                 setIsRunning(false);
@@ -391,7 +435,7 @@ export default function AssemblyVisualizer({ ref, active = true, formats }) {
         }, runDelayFrom(runDelay));
 
         return () => clearTimeout(timer);
-    }, [stepIndex, isRunning, history, runDelay, sourceChanged, busy, setRunIntent]);
+    }, [stepIndex, isRunning, history, runDelay, sourceChanged, busy, setRunIntent, predictMode, breakpoints]);
 
     // Put the cursor in the first field whenever a new question opens.
     const questionStep = question?.step ?? null;
@@ -413,6 +457,12 @@ export default function AssemblyVisualizer({ ref, active = true, formats }) {
             ? { phase: "review", fields: review.fields, check: review.check, revealed: review.revealed }
             : null;
     const shownLine = question ? history.executed_lines[question.step + 1] : history?.executed_lines[stepIndex];
+    // Breakpoints show in predict mode but never stop anything there.
+    const atBreakpoint = !sourceChanged && !predictMode && isBreakpointStop(history, stepIndex, breakpoints);
+    // The line about to run, outlined: the one being predicted, or a breakpoint.
+    const upcomingLine = sourceChanged ? null
+        : question || atBreakpoint ? history.executed_lines[stepIndex + 1] : null;
+    const totalSteps = history ? history.register_states.length - 1 : 0;
 
     return(
         <div className="assembly-visualizer">
@@ -421,21 +471,22 @@ export default function AssemblyVisualizer({ ref, active = true, formats }) {
                 <section className="panel code-panel" aria-label="Code editor">
                     <div className="panel-head">
                         <h2>Code Editor</h2>
-                        <label className="theme-switch">
-                            Dark editor
-                            <input
-                                type="checkbox"
-                                role="switch"
-                                checked={theme === "dark"}
-                                onChange={(event) => setTheme(event.target.checked ? "dark" : "light")}
-                            />
-                            <span className="switch-track" aria-hidden="true" />
-                        </label>
+                        <PlaybackSettings predictMode={predictMode} onPredictModeChange={changePredictMode}
+                            runDelay={runDelay} onRunDelayChange={setRunDelay}
+                            currentStep={stepIndex} totalSteps={totalSteps}
+                            canJump={history !== null && !busy && !sourceChanged} onJump={jumpToStep}
+                            summarizeStep={(step) => stepSummary(history, run?.assembly_code, step)}
+                            breakpointStops={history && !sourceChanged ? breakpointSteps(history, breakpoints) : []} />
                     </div>
 
-                    <ExecutionControls onLoad={handleLoad} onNext={handleNext} onBack={handleBack} onReset={handleReset} currentStep={stepIndex} totalSteps={history ? history.register_states.length - 1 : 0} onRun={handleRun} canPause={canPause} runDelay={runDelay} onRunDelayChange={setRunDelay} busy={busy} sourceChanged={sourceChanged} nextButtonRef={nextButton} loadButtonRef={loadButton}
-                        predictMode={predictMode} onPredictModeChange={changePredictMode} asking={question !== null}
-                        hasScore={score.total > 0}/>
+                    <ExecutionControls onLoad={handleLoad} onNext={handleNext} onBack={handleBack} onReset={handleReset}
+                        currentStep={stepIndex} totalSteps={totalSteps} onRun={handleRun} canPause={canPause}
+                        busy={busy} sourceChanged={sourceChanged} nextButtonRef={nextButton} loadButtonRef={loadButton}
+                        predictMode={predictMode} asking={question !== null} hasScore={score.total > 0}
+                        onJumpToBreakpoint={handleJumpToBreakpoint} hasBreakpoints={breakpoints.size > 0}
+                        pickingBreakpoint={pickingBreakpoint} breakpointCount={breakpoints.size}
+                        onToggleBreakpointPicking={() => setPickingBreakpoint(!pickingBreakpoint)}
+                        breakpointButtonRef={breakpointButton} />
 
                     {predictMode && history && !sourceChanged && (
                         <PredictPanel question={question} review={review?.step === stepIndex ? review : null}
@@ -448,8 +499,15 @@ export default function AssemblyVisualizer({ ref, active = true, formats }) {
                     <CodeEditor
                         assemblyCode={assemblyCode}
                         setAssemblyCode={changeSource}
-                        activeLine={sourceChanged ? null : shownLine}
-                        predicting={question !== null}
+                        activeLine={sourceChanged ? null : history?.executed_lines[stepIndex]}
+                        upcomingLine={upcomingLine}
+                        breakpoints={breakpoints}
+                        pickingBreakpoint={pickingBreakpoint}
+                        onPickBreakpoint={pickBreakpoint}
+                        onCancelPicking={cancelPicking}
+                        notice={atBreakpoint && !isRunning ? `Paused before line ${upcomingLine}` : null}
+                        darkTheme={theme === "dark"}
+                        onDarkThemeChange={(dark) => setTheme(dark ? "dark" : "light")}
                     />
 
                     <NextInstruction
@@ -512,6 +570,18 @@ export default function AssemblyVisualizer({ ref, active = true, formats }) {
                         stackPointer={history?.register_states?.[stepIndex]?.[31]}
                         memoryAccesses={history?.memory_accesses?.[stepIndex]}
                         sections={sectionContents}
+                        predict={predictView}
+                    />
+                </section>
+
+                {/* .rodata fills the space under Registers. On a wide screen it
+                    joins the RAM panel, which then wraps around Registers. */}
+                <section className="panel ram-foot" aria-label="Read-only data">
+                    <Section
+                        name=".rodata"
+                        section={sectionContents?.find((section) => section.name === ".rodata")}
+                        formats={formats}
+                        memoryAccesses={history?.memory_accesses?.[stepIndex]}
                         predict={predictView}
                     />
                 </section>

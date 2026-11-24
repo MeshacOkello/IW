@@ -13,7 +13,8 @@ SNAPSHOT_CHUNK_SIZE = 256
 LIBRARY_SYMBOLS = {
     name: 0x410000 + index * 4
     for index, name in enumerate(
-        ('malloc', 'free', 'printf', 'puts', 'putchar', 'getchar', 'fgets', 'scanf', 'labs'))
+        ('malloc', 'free', 'printf', 'puts', 'putchar', 'getchar', 'fgets', 'scanf', 'labs',
+         'isspace'))
 }
 LONG_MIN = -(1 << 63)
 

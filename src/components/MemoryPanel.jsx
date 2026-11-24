@@ -4,9 +4,10 @@ import Section from "./Section";
 import { PredictStores } from "./PredictFields";
 
 // .text holds code rather than data, so it has no visualization here.
+// .rodata sits outside this panel, in the space under the registers.
 // Every region is laid out at once: the panel never scrolls, and a region
 // with more rows than it can show scrolls inside itself.
-const SECTION_NAMES = [".data", ".bss", ".rodata"];
+const SECTION_NAMES = [".data", ".bss"];
 
 export default function MemoryPanel({
     stackValues,

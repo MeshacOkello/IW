@@ -68,15 +68,43 @@ a:focus-visible {
 
 /* The one row takes the space the header leaves; minmax(0, …) stops the
    row from growing to fit the tallest panel's contents. */
+/* Registers take only the height they need. RAM runs down the right and
+   turns under Registers, a mirrored L, with .rodata in its foot. */
 .workspace {
+  --workspace-gap: 18px;
   flex: 1 1 0;
   min-height: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.78fr) minmax(0, 1.02fr);
-  grid-template-rows: minmax(0, 1fr);
-  gap: 18px;
+  grid-template-columns: minmax(0, 1.16fr) minmax(0, 0.72fr) minmax(0, 1.02fr);
+  grid-template-rows: minmax(0, auto) minmax(6rem, 1fr);
+  grid-template-areas:
+    "code regs ram"
+    "code foot ram";
+  gap: var(--workspace-gap);
   align-items: stretch;
 }
+
+.code-panel { grid-area: code; }
+.registers-panel { grid-area: regs; }
+.ram-panel { grid-area: ram; }
+.ram-foot { grid-area: foot; }
+
+/* The foot reaches across the gap and over RAM's left border, so the two
+   read as one outline. */
+@media (min-width: 1181px) {
+  .ram-panel { border-bottom-left-radius: 0; }
+  .ram-foot {
+    position: relative;
+    z-index: 1;
+    margin-right: calc(-1 * var(--workspace-gap) - 1px);
+    border-right: 0;
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+  }
+}
+
+.ram-foot { overflow: hidden; }
+.ram-foot > .section-region { flex: 1; }
 
 /* Panels ------------------------------------------------------------------ */
 
@@ -415,18 +443,30 @@ textarea:focus-visible {
   padding: 12px 14px;
 }
 
-.next-instruction > span {
+.next-instruction-head {
   flex: none;
-  display: block;
-  margin-bottom: 7px;
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  min-width: 0;
+  margin-bottom: 4px;
+}
+
+.next-instruction-head > span {
+  flex: none;
   color: var(--heading-ink);
   font-size: 15px;
   font-weight: 700;
 }
 
-.next-instruction h5 {
+.next-instruction-code {
+  min-width: 0;
   margin: 0;
-  font-weight: 400;
+  overflow: hidden;
+  color: var(--text-h);
+  font: 700 14.5px/1.4 var(--mono);
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .next-instruction-body {
@@ -436,18 +476,9 @@ textarea:focus-visible {
   overflow-wrap: anywhere;
 }
 
-.next-instruction-body > h5:first-child {
-  color: var(--text-h);
-  font-family: var(--mono);
-  font-size: 15px;
-  font-weight: 700;
-}
-
-.next-instruction-body > h5:nth-child(2) {
-  margin-top: 5px;
+.next-instruction-body > p {
+  margin: 0;
   color: var(--text);
-  font-family: var(--mono);
-  font-size: 13px;
 }
 
 /* A share of the panel rather than its contents' height: output scrolls
@@ -455,7 +486,7 @@ textarea:focus-visible {
    scrolls sideways for a long line. */
 .stdout {
   box-sizing: border-box;
-  flex: 0 1 clamp(6rem, 18%, 10rem);
+  flex: 0 1 clamp(5rem, 14%, 8rem);
   min-height: 0;
   display: flex;
   flex-direction: column;
@@ -554,7 +585,7 @@ textarea:focus-visible {
 
 .register-tables tbody th,
 .register-tables td {
-  padding: 5px 10px;
+  padding: 3px 10px;
   border-bottom: 1px solid var(--border);
   font-family: var(--mono);
   font-weight: 400;
@@ -637,11 +668,10 @@ textarea:focus-visible {
   min-height: 0;
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  grid-template-rows: minmax(0, 4fr) minmax(8.5rem, 1fr) minmax(8.5rem, 1fr);
+  grid-template-rows: minmax(0, 3fr) minmax(8.5rem, 1fr);
   grid-template-areas:
     "stack  heap"
-    "data   bss"
-    "rodata rodata";
+    "data   bss";
   gap: 14px;
 }
 
@@ -649,7 +679,6 @@ textarea:focus-visible {
 .ram-grid > .heap-section { grid-area: heap; }
 .ram-grid > .section-region-data { grid-area: data; }
 .ram-grid > .section-region-bss { grid-area: bss; }
-.ram-grid > .section-region-rodata { grid-area: rodata; }
 
 .stack-section,
 .heap-section,
@@ -1083,7 +1112,10 @@ textarea:focus-visible {
     flex: 0 0 auto;
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: none;
+    grid-template-areas: "code" "regs" "ram" "foot";
   }
+
+  .panel.ram-foot { height: 13rem; }
 
   .panel {
     height: auto;
@@ -1111,13 +1143,12 @@ textarea:focus-visible {
 
   .ram-grid {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: 26rem 26rem repeat(3, 13rem);
+    grid-template-rows: 26rem 26rem repeat(2, 13rem);
     grid-template-areas:
       "stack"
       "heap"
       "data"
-      "bss"
-      "rodata";
+      "bss";
   }
 }
 
@@ -1136,24 +1167,33 @@ textarea:focus-visible {
 .register-tables .register-changed th { background: var(--surface-sunken); }
 .register-tables td { font-variant-numeric: tabular-nums; }
 .register-tables thead th { font-weight: 600; }
-.flags-panel { padding: 12px 14px; background: var(--surface-sunken); }
-.flags-panel h2 { font-size: 17px; }
+/* One compact row right under the register tables. */
+.flags-panel {
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 12px;
+  background: var(--surface-sunken);
+}
+.flags-panel h2 { font-size: 15px; }
+.flags-panel .flag-boxes { flex: 1; gap: 6px; }
 .flag-box { border: 0; background: transparent; padding: 3px 4px; font-weight: 500; }
 .next-instruction { background: var(--surface-sunken); }
-.next-instruction-body > h5:nth-child(2) { font: 14px/1.5 var(--sans); }
-.stdout { padding: 12px 14px; }
+.next-instruction-body > p { font: 14px/1.5 var(--sans); }
+.stdout { padding: 10px 12px; }
 .stack-section, .heap-section, .section-region { padding: 10px; }
 .stack-labels { color: var(--text); }
 .section-region > h5 { margin-bottom: 5px; }
 .memory-frame { border-radius: 4px; }
 .code-panel { overflow: hidden; }
-.next-instruction { flex: 0 1 7.5rem; min-height: 5rem; }
+.next-instruction { flex: 0 1 5.4rem; min-height: 4rem; padding: 10px 12px; }
+.stdout h5 { margin-bottom: 5px; }
 .simulation-status { flex: 0 1 auto; min-height: 0; }
 .code-editor { min-height: 8rem; }
 .error-kind, .error-location { font-size: 12px; text-transform: none; letter-spacing: 0; }
 @media (max-width: 1400px) and (min-width: 1181px) {
   .assembly-visualizer { padding: 16px; gap: 14px; }
-  .workspace { gap: 14px; grid-template-columns: minmax(0, 1.15fr) minmax(0, .8fr) minmax(0, 1.05fr); }
+  .workspace { --workspace-gap: 14px; grid-template-columns: minmax(0, 1.21fr) minmax(0, .74fr) minmax(0, 1.05fr); }
   .panel { --panel-padding: 14px; }
   .execution-controls button { padding-inline: 8px; }
   .register-tables { gap: 8px; }
@@ -1162,7 +1202,7 @@ textarea:focus-visible {
 
 /* Wrap playback settings together so Pause never strands the step counter. */
 .execution-buttons { display: flex; align-items: center; gap: 7px; }
-.execution-buttons > button:last-child { min-width: 4.5rem; }
+.execution-buttons > button:nth-child(5) { min-width: 3.3rem; }
 .playback-settings { display: flex; flex: 1 1 15rem; justify-content: space-between; align-items: center; gap: 12px; }
 .playback-settings .step-counter { margin: 0; }
 
@@ -1186,15 +1226,7 @@ textarea:focus-visible {
 }
 
 .predict-switch { font-size: 14px; }
-.playback-settings .predict-switch { margin-right: auto; }
 
-/* The upcoming instruction is marked, not shown as executed. */
-.code-editor-predicting .editor-backdrop .active-line {
-  background: transparent;
-  box-shadow: inset 3px 0 0 var(--accent);
-  outline: 1px dashed var(--accent);
-  outline-offset: -1px;
-}
 
 .predict-panel {
   flex: 0 0 auto;
@@ -1323,3 +1355,244 @@ textarea:focus-visible {
 .predict-store-title { grid-column: 1 / -1; color: var(--text-h); font-weight: 600; }
 .predict-store label { display: flex; flex-direction: column; gap: 2px; color: var(--text); }
 .predict-store-row { font-family: var(--mono); overflow-wrap: anywhere; }
+
+/* Breakpoints and step jumps ---------------------------------------------- */
+
+/* Breakpoints are neutral, in the Set breakpoint button's own ink, so they
+   never read as errors. Declared again on the editor so the dark editor
+   theme resolves them from its own ink. */
+.assembly-visualizer,
+.editor-container {
+  --breakpoint: var(--text-h);
+  --breakpoint-line: color-mix(in srgb, var(--text-h) 9%, transparent);
+  --breakpoint-hover: color-mix(in srgb, var(--text-h) 5%, transparent);
+}
+
+
+.breakpoint-button.picking {
+  border-color: var(--breakpoint);
+  color: var(--breakpoint);
+  background: var(--surface-head);
+}
+
+/* The count rides on the button's corner, so it never widens the row. */
+.breakpoint-button { position: relative; }
+.breakpoint-count {
+  position: absolute;
+  top: -7px;
+  right: -6px;
+  box-sizing: border-box;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--text-h);
+  color: var(--surface);
+  font: 600 10.5px/16px var(--sans);
+  text-align: center;
+}
+
+.editor-status {
+  flex: none;
+  height: 20px;
+  margin: 0 0 4px;
+  overflow: hidden;
+  color: var(--text-h);
+  font: 500 12.5px/20px var(--sans);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* A breakpoint tints its whole row, number and code alike. Gutter rows run
+   edge to edge so the tint does too. */
+.editor-gutter > span,
+.editor-gutter > button {
+  margin: 0 -10px 0 -12px;
+  padding: 0 10px 0 12px;
+}
+
+.editor-gutter .has-breakpoint {
+  background: var(--breakpoint-line);
+  color: var(--breakpoint);
+  font-weight: 700;
+}
+
+.editor-backdrop .breakpoint-line {
+  background: var(--breakpoint-line);
+  box-shadow: inset 3px 0 0 var(--breakpoint);
+}
+
+/* Choosing: the row under the pointer is tinted before it is clicked. */
+.editor-gutter .breakpoint-hover:not(.has-breakpoint),
+.editor-backdrop .breakpoint-hover:not(.breakpoint-line) { background: var(--breakpoint-hover); }
+.editor-backdrop .breakpoint-line.breakpoint-hover { background: var(--breakpoint-hover); }
+.code-editor-picking .assembly-input { cursor: pointer; }
+
+/* Choosing a breakpoint: every number is a target. */
+.gutter-picking {
+  background: var(--surface-head);
+  box-shadow: inset -2px 0 0 var(--breakpoint);
+}
+
+
+.editor-gutter > button {
+  flex: none;
+  height: 22px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-h);
+  font: inherit;
+  text-align: right;
+  cursor: pointer;
+}
+
+.editor-gutter > button:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+
+/* The instruction about to run: being predicted, or stopped at by a breakpoint. */
+.editor-backdrop .upcoming-line {
+  outline: 1px dashed var(--accent);
+  outline-offset: -1px;
+}
+.editor-gutter .upcoming-line-number { text-decoration: underline dashed; text-underline-offset: 3px; }
+
+.editor-overlay {
+  position: absolute;
+  top: 6px;
+  right: calc(8px + var(--editor-scrollbar-y, 0px));
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.editor-overlay .editor-theme-switch { pointer-events: auto; }
+
+
+
+.step-counter { position: relative; display: inline-flex; align-items: center; gap: 0; }
+
+.step-edit {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0 4px;
+  padding: 1px 6px;
+  border: 1px dashed var(--border-strong);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-h);
+  font: 600 14px/1.4 var(--sans);
+  font-variant-numeric: tabular-nums;
+}
+
+.step-edit .icon { color: var(--muted); }
+.step-edit:hover:not(:disabled) { border-style: solid; border-color: var(--accent); }
+.step-edit:hover:not(:disabled) .icon { color: var(--accent); }
+.step-edit:disabled { border-color: transparent; }
+.step-edit:disabled .icon { display: none; }
+
+.step-input {
+  box-sizing: border-box;
+  width: 6ch;
+  margin: 0 4px;
+  padding: 1px 4px;
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--text-h);
+  font: 600 14px/1.4 var(--sans);
+  font-variant-numeric: tabular-nums;
+}
+
+.step-input[aria-invalid='true'] { border-color: var(--error-program); }
+
+.step-jump-card {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: min(300px, 80vw);
+  padding: 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  box-shadow: 0 6px 20px rgb(25 35 50 / 14%);
+  color: var(--text);
+  font-weight: 400;
+  white-space: normal;
+}
+
+.step-jump-preview { min-height: 1.5em; font-size: 13px; color: var(--text-h); }
+.step-jump-preview code { font-family: var(--mono); }
+.step-jump-error { color: var(--error-program); }
+
+.step-jump-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.step-jump-chips button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.step-jump-actions { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.step-jump-actions button { padding: 4px 14px; }
+.step-jump-keys { color: var(--muted); font-size: 12px; }
+.step-jump-keys kbd {
+  padding: 0 4px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--surface-sunken);
+  font: 11px/1.5 var(--mono);
+}
+
+/* One header row holds the title and the playback settings; one row below
+   holds every action button. */
+.code-panel .panel-head { flex-wrap: wrap; row-gap: 8px; }
+.code-panel .panel-head .playback-settings {
+  flex: 0 1 auto;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-left: auto;
+}
+
+/* Spread across the row, with the gaps capped so a wide panel does not
+   scatter them. */
+.execution-buttons {
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px;
+  flex: 1 1 auto;
+  max-width: 34rem;
+}
+.execution-controls .execution-buttons button {
+  padding: 5px 6px;
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+
+/* The theme switch sits in the editor's top-right corner, clear of the
+   textarea's scrollbar. */
+.editor-theme-switch {
+  gap: 6px;
+  padding: 2px 4px 2px 8px;
+  border-radius: 999px;
+  background: var(--surface-sunken);
+  font-size: 12px;
+}
+.editor-theme-switch .switch-track { width: 30px; height: 17px; }
+.editor-theme-switch .switch-track::after { top: 2px; left: 2px; width: 13px; height: 13px; }
+.editor-theme-switch input:checked + .switch-track::after { transform: translateX(13px); }
+
+.step-jump-chips .step-chip-breakpoint {
+  border-color: var(--breakpoint);
+  background: var(--breakpoint-line);
+  color: var(--breakpoint);
+}

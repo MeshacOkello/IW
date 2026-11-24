@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { indentEdit } from "../editorIndent";
 import { highlightLine } from "../highlight";
 
@@ -6,7 +6,14 @@ export default function CodeEditor({
     assemblyCode,
     setAssemblyCode,
     activeLine,
-    predicting = false,
+    upcomingLine = null,
+    breakpoints = new Set(),
+    pickingBreakpoint = false,
+    onPickBreakpoint,
+    onCancelPicking,
+    notice = null,
+    darkTheme = false,
+    onDarkThemeChange,
 }) {
     const textareaRef = useRef(null);
     const backdropRef = useRef(null);
@@ -117,6 +124,61 @@ export default function CodeEditor({
         activeLineRef.current = activeLine;
     });
 
+    // Choosing a breakpoint: the line numbers become buttons. Focus starts on
+    // the line in view, and moving it scrolls the editor rather than the
+    // gutter, which only ever follows the textarea.
+    const focusGutterLine = useCallback((line) => {
+        const button = gutterRef.current?.querySelector(`[data-line="${line}"]`);
+        if (!button) return;
+        button.focus({ preventScroll: true });
+        revealLine(line);
+    }, [revealLine]);
+
+    useEffect(() => {
+        if (!pickingBreakpoint) return;
+        const textarea = textareaRef.current;
+        const lineHeight = parseFloat(getComputedStyle(textarea).lineHeight) || 22;
+        const firstVisible = Math.floor(textarea.scrollTop / lineHeight) + 1;
+        const start = activeLineRef.current ?? firstVisible;
+        focusGutterLine(Math.min(start, textarea.value.split("\n").length));
+    }, [pickingBreakpoint, focusGutterLine]);
+
+    // While choosing, a click anywhere along a line picks it, and the line
+    // under the pointer is tinted first so the choice is clear.
+    const [hoverLine, setHoverLine] = useState(null);
+    const pickHover = pickingBreakpoint ? hoverLine : null;
+
+    function lineAtPointer(event) {
+        const textarea = textareaRef.current;
+        const styles = getComputedStyle(textarea);
+        const lineHeight = parseFloat(styles.lineHeight);
+        const y = event.clientY - textarea.getBoundingClientRect().top
+            - parseFloat(styles.paddingTop) + textarea.scrollTop;
+        const line = Math.floor(y / lineHeight) + 1;
+        return line >= 1 && line <= lines.length ? line : null;
+    }
+
+    function handleSurfaceMouseDown(event) {
+        if (!pickingBreakpoint || event.button !== 0) return;
+        event.preventDefault();      // no caret, no selection: this is a pick
+        const line = lineAtPointer(event);
+        if (line !== null) onPickBreakpoint?.(line);
+    }
+
+    function handleGutterKey(event, line) {
+        const moves = { ArrowDown: 1, ArrowUp: -1, PageDown: 10, PageUp: -10 };
+        if (event.key === "Escape") {
+            event.preventDefault();
+            onCancelPicking?.();
+        } else if (moves[event.key] !== undefined) {
+            event.preventDefault();
+            focusGutterLine(Math.max(1, Math.min(lines.length, line + moves[event.key])));
+        } else if (event.key === "Home" || event.key === "End") {
+            event.preventDefault();
+            focusGutterLine(event.key === "Home" ? 1 : lines.length);
+        }
+    }
+
     useEffect(() => {
         const observer = new ResizeObserver(() => {
             measureScrollbars();
@@ -126,18 +188,70 @@ export default function CodeEditor({
         return () => observer.disconnect();
     }, [measureScrollbars, revealLine]);
 
+    function gutterClass(line) {
+        return [
+            activeLine === line && "active-line-number",
+            upcomingLine === line && "upcoming-line-number",
+            breakpoints.has(line) && "has-breakpoint",
+            pickHover === line && "breakpoint-hover",
+        ].filter(Boolean).join(" ") || undefined;
+    }
+
     return (
-        <div className={`code-editor${predicting ? " code-editor-predicting" : ""}`}>
+        <div className={`code-editor${pickingBreakpoint ? " code-editor-picking" : ""}`}>
+            {/* A fixed row above the code: what to do while choosing a
+                breakpoint, or where execution is paused. Always the same
+                height, so the editor never shifts when it changes. */}
+            <p className="editor-status" id="breakpoint-hint" role="status">
+                {pickingBreakpoint ? "Click a line to set or clear a breakpoint." : notice}
+            </p>
             <div className="editor-container" ref={containerRef}>
-                <div className="editor-gutter" ref={gutterRef} aria-hidden="true">
-                    {lines.map((_, index) => (
-                        <span
-                            key={index}
-                            className={activeLine === index + 1 ? "active-line-number" : ""}
-                        >
-                            {index + 1}
-                        </span>
-                    ))}
+                {/* The theme switch floats in the code's top-right corner;
+                    clicks around it still reach the code. */}
+                <div className="editor-overlay">
+                {onDarkThemeChange && (
+                    <label className="theme-switch editor-theme-switch">
+                        Dark editor
+                        <input
+                            type="checkbox"
+                            role="switch"
+                            checked={darkTheme}
+                            onChange={(event) => onDarkThemeChange(event.target.checked)}
+                        />
+                        <span className="switch-track" aria-hidden="true" />
+                    </label>
+                )}
+                </div>
+                <div
+                    className={`editor-gutter${pickingBreakpoint ? " gutter-picking" : ""}`}
+                    ref={gutterRef}
+                    role={pickingBreakpoint ? "group" : undefined}
+                    aria-label={pickingBreakpoint ? "Line numbers" : undefined}
+                    aria-describedby={pickingBreakpoint ? "breakpoint-hint" : undefined}
+                    aria-hidden={pickingBreakpoint ? undefined : "true"}
+                >
+                    {lines.map((_, index) => {
+                        const line = index + 1;
+                        return pickingBreakpoint ? (
+                            <button
+                                key={index}
+                                type="button"
+                                data-line={line}
+                                className={gutterClass(line)}
+                                tabIndex={-1}
+                                aria-pressed={breakpoints.has(line)}
+                                aria-label={`Toggle breakpoint on line ${line}`}
+                                onClick={() => onPickBreakpoint?.(line)}
+                                onMouseEnter={() => setHoverLine(line)}
+                                onMouseLeave={() => setHoverLine(null)}
+                                onKeyDown={(event) => handleGutterKey(event, line)}
+                            >
+                                {line}
+                            </button>
+                        ) : (
+                            <span key={index} className={gutterClass(line)}>{line}</span>
+                        );
+                    })}
                 </div>
 
                 <div className="editor-surface">
@@ -151,9 +265,12 @@ export default function CodeEditor({
                         {lines.map((line, index) => (
                             <span
                                 key={index}
-                                className={
-                                    activeLine === index + 1 ? "active-line" : ""
-                                }
+                                className={[
+                                    activeLine === index + 1 && "active-line",
+                                    upcomingLine === index + 1 && "upcoming-line",
+                                    breakpoints.has(index + 1) && "breakpoint-line",
+                                    pickHover === index + 1 && "breakpoint-hover",
+                                ].filter(Boolean).join(" ")}
                             >
                                 {line === ""
                                     ? " "
@@ -173,6 +290,9 @@ export default function CodeEditor({
                         onChange={(event) => setAssemblyCode(event.target.value)}
                         onKeyDown={handleKeyDown}
                         onScroll={syncScroll}
+                        onMouseDown={handleSurfaceMouseDown}
+                        onMouseMove={pickingBreakpoint ? (event) => setHoverLine(lineAtPointer(event)) : undefined}
+                        onMouseLeave={() => setHoverLine(null)}
                         wrap="off"
                         spellCheck={false}
                         aria-label="Assembly code"

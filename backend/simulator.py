@@ -10,7 +10,7 @@ import errors
 from assembler import STACK_START, STACK_END, TEXT_START, assemble_program, page_size
 from heap import HEAP_SIZE, HEAP_START, LIBRARY_SYMBOLS, Heap, HeapError, labs
 from instruction_parser import parse_instruction
-from library_io import InputProtocolError, LibraryMemory, Stdio, WaitingForInput
+from library_io import InputProtocolError, LibraryMemory, Stdio, WaitingForInput, isspace
 from pointer_registers import PC as PC_INDEX, SP as SP_INDEX, pointer_registers_after
 
 LIBRARY_TARGETS = {address: name for name, address in LIBRARY_SYMBOLS.items()}
@@ -448,6 +448,8 @@ def record_register_states(
                     heap.free(argument)
                 elif library_call == 'labs':
                     cpu_emulator.reg_write(reg.UC_ARM64_REG_X0, labs(argument))
+                elif library_call == 'isspace':
+                    cpu_emulator.reg_write(reg.UC_ARM64_REG_X0, isspace(argument))
                 else:
                     context = {
                         'function': library_call, 'line': instructions[PC].line,

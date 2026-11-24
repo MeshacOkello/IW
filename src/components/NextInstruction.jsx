@@ -28,11 +28,15 @@ export default function NextInstruction({
 
     return (
         <div className="next-instruction">
-            <span>{label}</span>
+            {/* The label and the instruction share a line; what the
+                instruction did reads underneath them. */}
+            <div className="next-instruction-head">
+                <span>{label}</span>
+                <h5 className="next-instruction-code" title={instruction}>{instruction}</h5>
+            </div>
             <div className="next-instruction-body">
-                <h5>{instruction}</h5>
                 {isLoaded && currentLine != null && explanation && (
-                    <h5><NumberText parts={explanationParts} fallback={explanation} formats={formats} /></h5>
+                    <p><NumberText parts={explanationParts} fallback={explanation} formats={formats} /></p>
                 )}
             </div>
         </div>
