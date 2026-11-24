@@ -1,5 +1,7 @@
+import MemoryHeading from "./MemoryHeading";
 import { formatNumber } from "../numberFormat";
 import { cellValue, memoryCells } from "../memoryCells";
+import { PredictStores } from "./PredictFields";
 
 function allocationCells(allocation, writes) {
     const { address, size, contents } = allocation;
@@ -24,12 +26,16 @@ function CellContents({ cell, dataFormat }) {
     );
 }
 
-export default function Heap({ allocations = [], formats, memoryAccesses = [] }) {
+export default function Heap({ allocations = [], formats, memoryAccesses = [], predict = null }) {
     const writes = memoryAccesses.filter((access) => access.kind === "write");
 
     return (
         <div className="heap-section">
-            <h5>Heap</h5>
+            <MemoryHeading name="Heap"
+                bytes={allocations.reduce((total, allocation) => total + allocation.size, 0)}
+                usageDescription="Total size of active allocations, including unwritten bytes" />
+
+            <PredictStores predict={predict} region="heap" formats={formats} />
 
             <div className="stack-labels">
                 <span>Address</span>

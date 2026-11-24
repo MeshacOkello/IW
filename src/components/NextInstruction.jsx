@@ -7,6 +7,7 @@ export default function NextInstruction({
     explanation,
     explanationParts,
     formats,
+    label = "Executed instruction",
 }) {
     let instruction = "Load a program to begin.";
 
@@ -22,12 +23,12 @@ export default function NextInstruction({
             instruction = "Source line unavailable. Reload the program.";
         }
     } else if (isLoaded) {
-        instruction = "Click Next to execute the first instruction.";
+        instruction = "Select Next for the first instruction.";
     }
 
     return (
         <div className="next-instruction">
-            <span>Executed Instruction</span>
+            <span>{label}</span>
             <div className="next-instruction-body">
                 <h5>{instruction}</h5>
                 {isLoaded && currentLine != null && explanation && (

@@ -12,7 +12,7 @@ export const EXAMPLES = {
     arithmetic: {
         id: "arithmetic",
         title: "Arithmetic",
-        objective: "See how each instruction changes one register.",
+        objective: "Compute a sum, difference, and product.",
         source: arithmetic,
         expected: [
             { code: "x3 = 25" }, { code: "x4 = 15" }, { code: "x5 = 125" },
@@ -22,7 +22,7 @@ export const EXAMPLES = {
     loop: {
         id: "loop",
         title: "A counting loop",
-        objective: "Watch cmp set the flags and ble decide whether to loop again.",
+        objective: "Sum the integers 1 through 5 using cmp and ble.",
         source: loop,
         expected: [
             { code: "x0 = 15" },
@@ -32,8 +32,9 @@ export const EXAMPLES = {
     array: {
         id: "array",
         title: "Arrays and pointers",
-        objective: "Follow a pointer through an array in .data.",
+        objective: "Add four 8-byte values and store their sum in total.",
         source: array,
+        excerpt: "    adr     x1, array\n    mov     x2, 4\n    mov     x0, 0\nsumLoop:\n    ldr     x3, [x1], 8\n    add     x0, x0, x3\n    sub     x2, x2, 1\n    cbnz    x2, sumLoop",
         expected: [
             { text: "x1 moves 8 bytes per pass." },
             { code: "total = 9" },
@@ -43,8 +44,9 @@ export const EXAMPLES = {
     recursion: {
         id: "recursion",
         title: "Recursion and stack frames",
-        objective: "See every call get its own frame, and each return remove one.",
+        objective: "Compute 4! with a 16-byte stack frame for each call.",
         source: recursion,
+        excerpt: "fact:\n    sub     sp, sp, FACT_STACK_BYTECOUNT\n    str     x30, [sp]\n    str     x0, [sp, LN]\n    cmp     x0, 1\n    bgt     factRecurse\n    mov     x0, 1\n    b       factReturn",
         expected: [
             { text: "Four fact frames stack above main, then unwind." },
             { text: "Status: main returned 24." },
@@ -53,8 +55,9 @@ export const EXAMPLES = {
     malloc: {
         id: "malloc",
         title: "malloc and free",
-        objective: "Watch a heap block appear, fill up and disappear.",
+        objective: "Reserve 16 bytes, store two values, then release the allocation.",
         source: malloc,
+        excerpt: "    mov     x0, 16\n    bl      malloc\n    mov     x1, 42\n    str     x1, [x0]\n    mov     x1, 7\n    str     x1, [x0, 8]\n    bl      free",
         expected: [
             { text: "A 16-byte block appears in Heap, then fills with 42 and 7." },
             { text: "After free: No active allocations." },
@@ -63,8 +66,9 @@ export const EXAMPLES = {
     greeting: {
         id: "greeting",
         title: "Read a line, print a line",
-        objective: "Answer an input box and see the reply in Stdout.",
+        objective: "Read a name with fgets and print a greeting with printf.",
         source: greeting,
+        excerpt: "    adr     x0, name\n    mov     x1, NAME_LENGTH\n    mov     x2, 0\n    bl      fgets\n    adr     x0, greetingStr\n    adr     x1, name\n    bl      printf",
         expected: [
             { text: "Type" }, { code: "Ada" }, { text: "and select Submit. Stdout shows:" },
             { code: "What is your name? Hello, Ada!" },
@@ -73,7 +77,7 @@ export const EXAMPLES = {
     nullPointer: {
         id: "null-pointer",
         title: "A null pointer",
-        objective: "Find the cause of a runtime error by stepping back.",
+        objective: "Load from address 0 to produce a runtime error.",
         source: nullPointer,
         intentionalError: true,
         expected: [

@@ -1,5 +1,5 @@
 // INTENTIONAL ERROR: this program loads through a null pointer.
-// Load it, run it, then step back to see what led to the failure.
+// Address 0 is unmapped in this simulator.
         .section .text
         .global main
 main:

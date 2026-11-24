@@ -6,6 +6,7 @@ export default function CodeEditor({
     assemblyCode,
     setAssemblyCode,
     activeLine,
+    predicting = false,
 }) {
     const textareaRef = useRef(null);
     const backdropRef = useRef(null);
@@ -126,7 +127,7 @@ export default function CodeEditor({
     }, [measureScrollbars, revealLine]);
 
     return (
-        <div className="code-editor">
+        <div className={`code-editor${predicting ? " code-editor-predicting" : ""}`}>
             <div className="editor-container" ref={containerRef}>
                 <div className="editor-gutter" ref={gutterRef} aria-hidden="true">
                     {lines.map((_, index) => (

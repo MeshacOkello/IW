@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import AssemblyVisualizer from "./components/AssemblyVisualizer";
 import HowToUse from "./components/HowToUse";
+import AppHeader from "./components/AppHeader";
 import { SECTIONS } from "./guide/sections";
 import './App.css';
 
@@ -16,6 +17,9 @@ function routeFrom(hash) {
 export default function App() {
     const [route, setRoute] = useState(() => routeFrom(window.location.hash));
     const workspace = useRef(null);
+    const [addressFormat, setAddressFormat] = useState("hex");
+    const [dataFormat, setDataFormat] = useState("dec");
+    const formats = { address: addressFormat, data: dataFormat };
 
     useEffect(() => {
         const update = () => setRoute(routeFrom(window.location.hash));
@@ -34,10 +38,12 @@ export default function App() {
 
     return (
         <>
+            <AppHeader current={route.page === "guide" ? "guide" : "visualizer"}
+                formats={formats} onAddressFormatChange={setAddressFormat} onDataFormatChange={setDataFormat} />
             {/* Kept mounted while the guide shows, so the code, the run and
                 the selected step are all still there on the way back. */}
             <div hidden={route.page !== "visualizer"}>
-                <AssemblyVisualizer ref={workspace} active={route.page === "visualizer"} />
+                <AssemblyVisualizer ref={workspace} active={route.page === "visualizer"} formats={formats} />
             </div>
             {route.page === "guide" && (
                 <HowToUse

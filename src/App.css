@@ -6,13 +6,13 @@
    too little room for the editor, so the page scrolls instead of crushing it. */
 .assembly-visualizer {
   box-sizing: border-box;
-  height: max(100svh, 46rem);
-  min-height: 100svh;
+  height: max(calc(100svh - var(--app-header-height, 72px)), calc(46rem - var(--app-header-height, 72px)));
+  min-height: calc(100svh - var(--app-header-height, 72px));
   padding: 20px 24px 24px;
   display: flex;
   flex-direction: column;
   gap: 18px;
-  background: linear-gradient(180deg, var(--page) 0%, var(--page-edge) 100%);
+  background: var(--page);
   text-align: left;
 }
 
@@ -20,57 +20,41 @@
   background: var(--page);
 }
 
+/* One persistent header owns app identity, navigation, and display settings. */
 .app-header {
-  display: flex;
-  flex-wrap: wrap;
+  box-sizing: border-box;
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  min-height: 72px;
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr);
   align-items: center;
-  justify-content: space-between;
-  gap: 16px;
+  gap: 32px;
+  padding: 12px 24px;
+  border-bottom: 1px solid var(--border-strong);
+  background: var(--surface);
 }
-
-.app-header h1,
-.app-header .brand {
-  font-size: 30px;
-  font-weight: 700;
-  letter-spacing: -0.5px;
-  color: var(--heading-ink);
+.app-brand { display: flex; flex-direction: column; gap: 2px; width: fit-content; color: var(--heading-ink); text-decoration: none; }
+.app-name { font-size: 20px; font-weight: 650; line-height: 1.25; letter-spacing: -.4px; }
+.page-nav { display: flex; gap: 22px; align-self: stretch; align-items: stretch; }
+.page-nav a { display: flex; align-items: center; padding: 0 2px; border-bottom: 2px solid transparent; color: var(--text); font-size: 14px; font-weight: 500; text-decoration: none; }
+.page-nav a:hover { color: var(--heading-ink); }
+.page-nav a[aria-current='page'] { color: var(--accent); border-bottom-color: var(--accent); }
+.header-formats { display: flex; justify-content: flex-end; flex-wrap: wrap; align-items: center; gap: 16px; min-width: 0; margin: 0; padding: 0; border: 0; }
+.header-formats label { display: flex; gap: 7px; align-items: center; color: var(--text); font-size: 13px; }
+.header-formats select { background: var(--surface-sunken); }
+@media (max-width: 760px) {
+  .app-header { grid-template-columns: minmax(0, 1fr) auto; padding: 10px 16px; gap: 10px 16px; }
+  .app-name { font-size: 18px; }
+  .page-nav { gap: 16px; }
+  .header-formats { grid-column: 1 / -1; justify-content: flex-start; gap: 20px; padding-top: 8px; border-top: 1px solid var(--border); }
 }
-
-.brand-group {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 10px 24px;
-}
-
-/* Page navigation ---------------------------------------------------------- */
-
-.page-nav {
-  display: flex;
-  gap: 4px;
-}
-
-.page-nav a {
-  padding: 6px 12px;
-  border-radius: var(--radius-sm);
-  color: var(--text-h);
-  font-size: 14.5px;
-  font-weight: 500;
-  text-decoration: none;
-}
-
-.page-nav a:hover {
-  background: var(--surface-head);
-}
-
-.page-nav a[aria-current='page'] {
-  background: var(--accent-soft);
-  color: var(--accent);
-  font-weight: 600;
-}
-
-:root[data-theme='dark'] .page-nav a[aria-current='page'] {
-  color: var(--heading-ink);
+@media (max-width: 440px) {
+  .app-header { gap: 10px; }
+  .app-name { font-size: clamp(14px, 4vw, 16px); }
+  .page-nav { gap: 10px; }
+  .page-nav a { font-size: 13px; }
 }
 
 a:focus-visible {
@@ -80,20 +64,6 @@ a:focus-visible {
 
 .icon {
   flex: none;
-}
-
-.number-formats {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 18px;
-}
-
-.number-formats label {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--text-h);
-  font-size: 14px;
 }
 
 /* The one row takes the space the header leaves; minmax(0, …) stops the
@@ -437,7 +407,7 @@ textarea:focus-visible {
 .next-instruction {
   box-sizing: border-box;
   flex: 0 0 auto;
-  height: 8.5rem;
+  height: 7.5rem;
   display: flex;
   flex-direction: column;
   border: 1px solid var(--border);
@@ -485,7 +455,7 @@ textarea:focus-visible {
    scrolls sideways for a long line. */
 .stdout {
   box-sizing: border-box;
-  flex: 0 0 clamp(6rem, 22%, 13rem);
+  flex: 0 1 clamp(6rem, 18%, 10rem);
   min-height: 0;
   display: flex;
   flex-direction: column;
@@ -593,7 +563,7 @@ textarea:focus-visible {
 }
 
 .register-tables tbody th {
-  width: 38%;
+  width: 1%;
   color: var(--text-h);
 }
 
@@ -610,7 +580,6 @@ textarea:focus-visible {
 
 .register-tables .register-changed th,
 .register-tables .register-changed td {
-  background: var(--highlight);
   font-weight: 600;
 }
 
@@ -661,19 +630,17 @@ textarea:focus-visible {
   overflow: hidden;
 }
 
-/* The stack is what a program spends its time in, so it takes a whole column.
-   The heap is rarely more than a few allocations, so it keeps one short box
-   and .data takes the height it gives up. */
+/* Stack and Heap share the largest row. Static regions each retain an
+   independent bounded scroll area below them. */
 .ram-grid {
   flex: 1;
   min-height: 0;
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  grid-template-rows: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.1fr);
+  grid-template-rows: minmax(0, 4fr) minmax(8.5rem, 1fr) minmax(8.5rem, 1fr);
   grid-template-areas:
     "stack  heap"
-    "stack  data"
-    "stack  bss"
+    "data   bss"
     "rodata rodata";
   gap: 14px;
 }
@@ -1017,15 +984,6 @@ textarea:focus-visible {
   --error-tool-border: #ddc68c;
 }
 
-:root[data-theme='dark'] .assembly-visualizer,
-:root[data-theme='dark'] .guide-page {
-  --error-program: #e08d7c;
-  --error-program-bg: #251b19;
-  --error-program-border: #5a3831;
-  --error-tool: #cdb075;
-  --error-tool-bg: #221f18;
-  --error-tool-border: #544b33;
-}
 
 .error-message {
   box-sizing: border-box;
@@ -1133,17 +1091,13 @@ textarea:focus-visible {
 
   .code-panel,
   .ram-panel {
-    height: clamp(34rem, calc(100svh - 40px), 54rem);
+    height: clamp(34rem, calc(100svh - var(--app-header-height, 72px) - 40px), 54rem);
   }
 }
 
 @media (max-width: 640px) {
   .assembly-visualizer {
     padding: 16px 16px 20px;
-  }
-
-  .app-header h1 {
-    font-size: 25px;
   }
 
   .panel {
@@ -1157,7 +1111,7 @@ textarea:focus-visible {
 
   .ram-grid {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: 26rem repeat(3, 13rem) 15rem;
+    grid-template-rows: 26rem 26rem repeat(3, 13rem);
     grid-template-areas:
       "stack"
       "heap"
@@ -1172,3 +1126,200 @@ textarea:focus-visible {
     grid-template-columns: minmax(min-content, 1fr);
   }
 }
+
+/* Focused refinements to the original workspace. */
+.panel > h2, .panel-head { padding-bottom: 2px; }
+.execution-controls { column-gap: 6px; row-gap: 9px; }
+.step-counter { margin-left: auto; color: var(--text); font-weight: 500; }
+.editor-container { border-color: var(--border-strong); }
+.register-tables tbody th { border-right: 1px solid var(--border); background: var(--surface-sunken); padding-right: 12px; }
+.register-tables .register-changed th { background: var(--surface-sunken); }
+.register-tables td { font-variant-numeric: tabular-nums; }
+.register-tables thead th { font-weight: 600; }
+.flags-panel { padding: 12px 14px; background: var(--surface-sunken); }
+.flags-panel h2 { font-size: 17px; }
+.flag-box { border: 0; background: transparent; padding: 3px 4px; font-weight: 500; }
+.next-instruction { background: var(--surface-sunken); }
+.next-instruction-body > h5:nth-child(2) { font: 14px/1.5 var(--sans); }
+.stdout { padding: 12px 14px; }
+.stack-section, .heap-section, .section-region { padding: 10px; }
+.stack-labels { color: var(--text); }
+.section-region > h5 { margin-bottom: 5px; }
+.memory-frame { border-radius: 4px; }
+.code-panel { overflow: hidden; }
+.next-instruction { flex: 0 1 7.5rem; min-height: 5rem; }
+.simulation-status { flex: 0 1 auto; min-height: 0; }
+.code-editor { min-height: 8rem; }
+.error-kind, .error-location { font-size: 12px; text-transform: none; letter-spacing: 0; }
+@media (max-width: 1400px) and (min-width: 1181px) {
+  .assembly-visualizer { padding: 16px; gap: 14px; }
+  .workspace { gap: 14px; grid-template-columns: minmax(0, 1.15fr) minmax(0, .8fr) minmax(0, 1.05fr); }
+  .panel { --panel-padding: 14px; }
+  .execution-controls button { padding-inline: 8px; }
+  .register-tables { gap: 8px; }
+  .register-tables tbody th, .register-tables td, .register-tables thead th { padding-inline: 7px; }
+}
+
+/* Wrap playback settings together so Pause never strands the step counter. */
+.execution-buttons { display: flex; align-items: center; gap: 7px; }
+.execution-buttons > button:last-child { min-width: 4.5rem; }
+.playback-settings { display: flex; flex: 1 1 15rem; justify-content: space-between; align-items: center; gap: 12px; }
+.playback-settings .step-counter { margin: 0; }
+
+/* Only untouched initial zeros are quiet; a write is marked separately from the current code line. */
+.register-untouched:not(.register-changed) .register-value { opacity: .35; }
+.register-tables .register-changed td {
+  box-shadow: inset 3px 0 var(--accent);
+  color: var(--accent);
+  font-weight: 700;
+}
+.memory-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.memory-usage { flex: none; color: var(--text); font: 400 12px/1.4 var(--mono); white-space: nowrap; }
+
+/* Predict mode ------------------------------------------------------------ */
+
+.assembly-visualizer {
+  --predict-correct: #1f7a3d;
+  --predict-correct-bg: #eef7f0;
+  --predict-wrong: var(--error-program);
+  --predict-wrong-bg: var(--error-program-bg);
+}
+
+.predict-switch { font-size: 14px; }
+.playback-settings .predict-switch { margin-right: auto; }
+
+/* The upcoming instruction is marked, not shown as executed. */
+.code-editor-predicting .editor-backdrop .active-line {
+  background: transparent;
+  box-shadow: inset 3px 0 0 var(--accent);
+  outline: 1px dashed var(--accent);
+  outline-offset: -1px;
+}
+
+.predict-panel {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
+  font-size: 13.5px;
+}
+
+.predict-panel p { margin: 0; }
+.predict-body { display: flex; flex-direction: column; gap: 6px; }
+.predict-prompt { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
+.predict-prompt strong { color: var(--heading-ink); font-size: 15px; }
+.predict-note { color: var(--muted); font-size: 12.5px; }
+.predict-actions { display: flex; gap: 7px; }
+.predict-actions button { padding: 5px 12px; }
+.predict-result { color: var(--text-h); font-weight: 600; }
+.predict-result-correct { color: var(--predict-correct); }
+.predict-result-wrong { color: var(--predict-wrong); }
+
+.predict-misses {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--text);
+  font-size: 12.5px;
+}
+
+.predict-misses li { display: flex; flex-direction: column; }
+.predict-miss-line { color: var(--text-h); }
+.predict-misses code { font-family: var(--mono); }
+
+.predict-score {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 14px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+  color: var(--text);
+}
+
+.predict-score strong { color: var(--text-h); font-variant-numeric: tabular-nums; }
+.predict-score details { flex: 1 1 100%; }
+.predict-score summary { cursor: pointer; color: var(--text-h); }
+.predict-score details .predict-misses { margin-top: 4px; max-height: 8.5rem; overflow-y: auto; }
+
+/* A field to fill in: an input in place of the value. */
+.predict-input {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 9ch;
+  padding: 2px 6px;
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--text-h);
+  font: 13px/1.4 var(--mono);
+}
+
+.predict-input:focus-visible { outline: 2px solid var(--focus); outline-offset: 0; }
+
+.register-tables .register-predict-ask td,
+.register-tables .register-predict-ask th { background: var(--accent-soft); }
+.register-tables .register-predict-ask td { padding-block: 3px; overflow: visible; }
+.register-width { color: var(--muted); font-size: 11.5px; }
+
+.predict-branch { display: inline-flex; gap: 4px; }
+.predict-branch button {
+  padding: 2px 8px;
+  font-size: 12.5px;
+  font-family: var(--sans);
+}
+.predict-branch button.selected {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+.predict-branch-result { color: var(--text-h); font-family: var(--sans); }
+
+.predict-flag {
+  border: 1px dashed var(--accent);
+  background: var(--accent-soft);
+  color: var(--text-h);
+  cursor: pointer;
+}
+.predict-flag[aria-pressed='true'] { border-style: solid; }
+
+.predict-mark {
+  margin-left: 8px;
+  font: 600 12px/1.4 var(--sans);
+  white-space: nowrap;
+}
+.predict-correct { color: var(--predict-correct); }
+.predict-wrong { color: var(--predict-wrong); }
+.predict-wrong s { font-family: var(--mono); font-weight: 400; }
+.predict-revealed { color: var(--muted); font-weight: 500; }
+
+.flag-box .predict-mark { margin-left: 4px; }
+
+/* Stores to predict sit at the top of the region they land in. */
+.predict-stores {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 4px 0 8px;
+}
+
+.predict-store {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: center;
+  gap: 4px 8px;
+  padding: 6px 8px;
+  border: 1px dashed var(--accent);
+  border-radius: 4px;
+  background: var(--accent-soft);
+  font-size: 12.5px;
+}
+
+.predict-review .predict-store { border-style: solid; border-color: var(--border-strong); background: var(--surface); }
+.predict-store-title { grid-column: 1 / -1; color: var(--text-h); font-weight: 600; }
+.predict-store label { display: flex; flex-direction: column; gap: 2px; color: var(--text); }
+.predict-store-row { font-family: var(--mono); overflow-wrap: anywhere; }

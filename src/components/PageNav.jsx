@@ -2,7 +2,7 @@
 // button moves between them and the workspace is never reloaded.
 export default function PageNav({ current }) {
     return (
-        <nav className="page-nav" aria-label="Pages">
+        <nav className="page-nav" aria-label="Main navigation">
             <a href="#/" aria-current={current === "visualizer" ? "page" : undefined}>Visualizer</a>
             <a href="#/how-to" aria-current={current === "guide" ? "page" : undefined}>How to use</a>
         </nav>

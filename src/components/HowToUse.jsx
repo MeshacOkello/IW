@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from "react";
-import PageNav from "./PageNav";
 import CodeExample from "./CodeExample";
 import ReplaceCodeDialog from "./ReplaceCodeDialog";
 import Icon from "./Icon";
@@ -7,35 +6,20 @@ import { EXAMPLES } from "../guide/examples";
 import { SECTIONS } from "../guide/sections";
 import "../guide/guide.css";
 
-const SYNTAX_COLORS = [
-    { kind: "directive", sample: ".section", meaning: "directives" },
-    { kind: "label", sample: "main:", meaning: "labels" },
-    { kind: "mnemonic", sample: "add", meaning: "instructions" },
-    { kind: "register", sample: "x3", meaning: "registers" },
-    { kind: "immediate", sample: "25", meaning: "numbers" },
-    { kind: "string", sample: '"%ld"', meaning: "strings" },
-    { kind: "comment", sample: "// note", meaning: "comments" },
-];
-
-function Section({ id, number, title, intro, children }) {
-    return (
-        <section className="guide-section" id={id} aria-labelledby={`${id}-heading`}>
-            <h2 id={`${id}-heading`} tabIndex={-1}>
-                {number && <span className="section-number">{number}.</span>} {title}
-            </h2>
-            {intro && <p className="section-intro">{intro}</p>}
-            {children}
-        </section>
-    );
+function Section({ id, title, children }) {
+    return <section className="guide-section" id={id} aria-labelledby={`${id}-heading`}>
+        <h2 id={`${id}-heading`} tabIndex={-1}>{title}</h2>
+        {children}
+    </section>;
 }
 
-function Term({ name, children }) {
-    return (
-        <div className="term">
-            <dt>{name}</dt>
-            <dd>{children}</dd>
-        </div>
-    );
+function ReferenceTable({ headings, rows }) {
+    return <div className="reference-table"><table>
+        <thead><tr>{headings.map(heading => <th key={heading} scope="col">{heading}</th>)}</tr></thead>
+        <tbody>{rows.map(([term, description], index) => <tr key={index}>
+            <th scope="row">{term}</th><td>{description}</td>
+        </tr>)}</tbody>
+    </table></div>;
 }
 
 function scrollToSection(id, { focus = true } = {}) {
@@ -102,13 +86,6 @@ export default function HowToUse({ section, hasUnsavedCode, onOpenExample }) {
 
     return (
         <div className="guide-page">
-            <header className="app-header guide-header">
-                <div className="brand-group">
-                    <a className="brand" href="#/">Assembly Visualizer</a>
-                    <PageNav current="guide" />
-                </div>
-            </header>
-
             <div className="guide-layout">
                 <aside className="guide-sidebar">
                     <nav aria-label="On this page">
@@ -129,166 +106,106 @@ export default function HowToUse({ section, hasUnsavedCode, onOpenExample }) {
 
                 <main className="guide-content">
                     <h1>How to use</h1>
-                    <p className="guide-lede">Learn the controls, then try a small program. Every example opens in the Visualizer, ready to run.</p>
+                    <p className="guide-lede">Enter AArch64 assembly, select Load, then step through the recorded execution.</p>
 
-                    <Section id="getting-started" number={1} title="Load your first program"
-                        intro="Write assembly in the Code Editor, select Load, then move through the steps.">
-                        <ol className="stepper" aria-label="The three steps">
-                            <li><span aria-hidden="true">1</span> Write code</li>
-                            <li><span aria-hidden="true">2</span> Load</li>
-                            <li><span aria-hidden="true">3</span> Step or Run</li>
-                        </ol>
-
-                        <div className="split">
-                            <div>
-                                <p><strong>Load</strong> assembles your program and records every step it takes. The panels then show the state before the first instruction.</p>
-                                <ul className="control-list">
-                                    <li><strong>Next</strong> executes one instruction.</li>
-                                    <li><strong>Back</strong> returns to the state before the last instruction.</li>
-                                    <li><strong>Run</strong> plays the steps one after another. <strong>Pause</strong> stops it.</li>
-                                    <li><strong>Speed</strong> sets the wait between steps while running, from 0 ms to 5 s.</li>
-                                    <li><strong>Reset</strong> goes back to step 0, before the first instruction.</li>
-                                    <li><strong>Step 3 of 12</strong> counts the instructions run so far, out of all the steps recorded.</li>
-                                </ul>
-                                <p className="callout">Edited your code? The panels keep showing the old run, and Next and Run stay off, until you select <strong>Load</strong> again.</p>
-                                <p>A program starts at <code>main</code> when it has one, and otherwise at its first instruction. It ends when <code>main</code> returns, or after its last instruction.</p>
-                            </div>
-                            <CodeExample example={ex.arithmetic} onOpen={requestOpen} />
-                        </div>
+                    <Section id="getting-started" title="Getting started">
+                        <p>Load assembles the source and records execution. The workspace starts at step 0, before the first instruction. Examples below open as source; select Load to run them.</p>
+                        <ReferenceTable headings={["Control", "Action"]} rows={[
+                            ["Next", "Moves forward one instruction."],
+                            ["Back", "Shows the previous state."],
+                            ["Run / Pause", "Starts or pauses playback of recorded steps."],
+                            ["Speed", "Sets the delay between steps, from 0 ms to 5 s."],
+                            ["Reset", "Returns to step 0."],
+                            ["Step counter", "Shows the selected step and the total recorded steps."],
+                        ]} />
+                        <p>After editing, select Load again. Until then, the panels show the previous run and Next and Run are disabled. Opening the guide and returning preserves your code and selected step.</p>
+                        <p>The simulator starts at <code>main</code> if defined, otherwise at the first instruction. It stops when main returns or execution reaches the end of the code.</p>
+                        <CodeExample example={ex.arithmetic} onOpen={requestOpen} />
                     </Section>
 
-                    <Section id="reading-execution" number={2} title="Read what changed"
-                        intro="Each step connects one instruction to its effects.">
-                        <div className="change-demo" aria-hidden="true">
-                            <code className="change-chip">
-                                <span className="tok-mnemonic">add</span> <span className="tok-register">x3</span>, <span className="tok-register">x1</span>, <span className="tok-register">x2</span>
-                            </code>
-                            <span className="change-arrow">→</span>
-                            <code className="change-chip changed"><span className="tok-register">x3</span> <span className="change-divider">|</span> <span className="tok-immediate">25</span></code>
-                        </div>
-                        <dl className="terms two-column">
-                            <Term name="Executed instruction">
-                                The line just executed is highlighted in the editor, with its line number in bold. The Executed Instruction panel repeats it and explains what it did, using the actual values.
-                            </Term>
-                            <Term name="Changed values">
-                                Registers the last step changed are highlighted in blue. So are memory rows it wrote to, in Stack, Heap, .data and .bss.
-                            </Term>
-                            <Term name="Address and data formats">
-                                <strong>Address Format</strong> shows addresses (sp, pc, pointers and memory addresses) in hex or decimal. <strong>Data Format</strong> does the same for every other value.
-                            </Term>
-                            <Term name="Editor">
-                                <kbd>Tab</kbd> indents and <kbd>Shift</kbd>+<kbd>Tab</kbd> outdents. Press <kbd>Esc</kbd> to leave the editor with the keyboard. The <strong>Dark mode</strong> switch sits in the Code Editor heading, and your choice is remembered.
-                            </Term>
-                        </dl>
-                        <h3 className="subheading">Syntax colors</h3>
-                        <ul className="syntax-legend">
-                            {SYNTAX_COLORS.map(({ kind, sample, meaning }) => (
-                                <li key={kind}><code className={`tok-${kind}`}>{sample}</code> {meaning}</li>
-                            ))}
-                        </ul>
+                    <Section id="reading-execution" title="Reading execution">
+                        <p>The editor highlights the instruction that produced the selected state. Executed instruction explains its effects. Changed register values use blue text and a left marker. Registers x0–x30 are muted until written, even if the written value is zero; memory writes use blue row highlights.</p>
+                        <ReferenceTable headings={["Setting or key", "Effect"]} rows={[
+                            ["Addresses", "Formats memory addresses, sp, pc, and values tracked as pointers in hex or decimal."],
+                            ["Data", "Formats other numeric values in hex or decimal."],
+                            ["Dark editor", "Changes the editor theme. The choice is saved in this browser."],
+                            [<kbd>Tab</kbd>, "Indents the selected lines."],
+                            [<><kbd>Shift</kbd> + <kbd>Tab</kbd></>, "Removes indentation."],
+                            [<kbd>Esc</kbd>, "Releases keyboard focus from the editor so Tab can move to the next control."],
+                        ]} />
+                        <p>Syntax colors distinguish instructions, registers, numbers, labels, directives, strings, and comments. They do not indicate execution state.</p>
                     </Section>
 
-                    <Section id="registers-flags" number={3} title="Registers & flags"
-                        intro="Registers are the processor's own variables. Each holds 64 bits.">
-                        <dl className="terms two-column">
-                            <Term name="x0 to x30">
-                                General-purpose registers. <code>w0</code> to <code>w30</code> name their lower 32 bits. A function gets its arguments in x0 to x7 and returns its result in x0.
-                            </Term>
-                            <Term name="x30">
-                                The return address. <code>bl</code> puts it there, and <code>ret</code> jumps back to it. Save x30 on the stack before calling another function.
-                            </Term>
-                            <Term name="sp">
-                                The stack pointer: the lowest address the stack is using. <code>sub sp, sp, 16</code> reserves space, and adding it back releases the space. Keep sp a multiple of 16.
-                            </Term>
-                            <Term name="pc">
-                                The program counter: the address of the next instruction to run.
-                            </Term>
-                        </dl>
-
-                        <h3 className="subheading">NZCV flags</h3>
-                        <p>Instructions such as <code>cmp</code>, <code>adds</code> and <code>subs</code> set four flags, shown under the registers. Conditional branches read them.</p>
-                        <dl className="flag-terms">
-                            <Term name="N">Negative: the result was negative.</Term>
-                            <Term name="Z">Zero: the result was 0, so a compare found the values equal.</Term>
-                            <Term name="C">Carry: for a compare, the first value was at least the second, read as unsigned.</Term>
-                            <Term name="V">Overflow: the signed result did not fit.</Term>
-                        </dl>
-                        <p><code>beq</code> and <code>bne</code> test Z. <code>blt</code>, <code>ble</code>, <code>bgt</code> and <code>bge</code> compare signed values. <code>blo</code> and <code>bhi</code> compare unsigned ones.</p>
+                    <Section id="registers-flags" title="Registers & flags">
+                        <ReferenceTable headings={["Register", "Meaning"]} rows={[
+                            [<code>x0–x30</code>, <>64-bit general-purpose registers. <code>w0–w30</code> name their lower 32 bits; writing a w register clears the upper 32 bits of its x register.</>],
+                            [<code>x0–x7</code>, "Pass integer and pointer arguments under the AArch64 calling convention. Integer and pointer results return in x0 (or w0 for 32-bit results)."],
+                            [<code>x30</code>, <>The link register. <code>bl</code> writes the return address here; <code>ret</code> uses x30 by default. Preserve a return address you still need before another call overwrites it.</>],
+                            [<code>sp</code>, <>The stack pointer. <code>sub sp, sp, 16</code> reserves 16 bytes; adding 16 releases them. Keep sp aligned to 16 bytes when accessing memory through sp and at function-call boundaries.</>],
+                            [<code>pc</code>, "The address of the next instruction."],
+                        ]} />
+                        <h3>Condition flags (NZCV)</h3>
+                        <p><code>cmp</code> subtracts its operands to set flags without saving the result. <code>adds</code>, <code>subs</code>, and <code>ands</code> also set flags. Conditional branches test the current flags, which may come from an earlier instruction.</p>
+                        <ReferenceTable headings={["Flag", "When set"]} rows={[
+                            ["N", "The result’s most significant bit is 1."],
+                            ["Z", "The result is zero."],
+                            ["C", "Addition produces a carry, or subtraction needs no borrow. After cmp, the first operand is at least the second as an unsigned value."],
+                            ["V", "Signed arithmetic overflows the result width."],
+                        ]} />
+                        <p><code>beq</code> and <code>bne</code> test Z. <code>blt</code>, <code>ble</code>, <code>bgt</code>, and <code>bge</code> test signed relations; <code>blo</code>, <code>bls</code>, <code>bhi</code>, and <code>bhs</code> test unsigned relations. These relations describe the operands when the flags came from a comparison.</p>
                         <CodeExample example={ex.loop} onOpen={requestOpen} />
                     </Section>
 
-                    <Section id="ram" number={4} title="RAM"
-                        intro="Each region of memory has its own box, and each box scrolls on its own.">
-                        <dl className="terms two-column">
-                            <Term name="Stack">Local variables and saved registers. Each call gets a coloured frame named after its function: main sits at the bottom, newer calls stack on top, and <code>SP →</code> marks the stack pointer.</Term>
-                            <Term name="Heap">Blocks from <code>malloc</code>, each labelled with its address and size. A block disappears when it is freed.</Term>
-                            <Term name=".data">Variables with starting values, such as <code>.quad 3</code>. Your program can change them.</Term>
-                            <Term name=".bss">Variables that start as zero, reserved with <code>.skip</code>.</Term>
-                            <Term name=".rodata">Read-only constants, such as format strings. Strings are shown as text.</Term>
-                        </dl>
-                        <ul className="plain-list">
-                            <li>Each row shows an <strong>Address</strong> and up to 8 bytes of <strong>Data</strong> stored there. In .data, .bss and .rodata, labels mark where each named variable starts.</li>
-                            <li><strong>[empty]</strong> means the space is reserved but nothing has been stored there yet.</li>
-                            <li>Rows the last step wrote to are <span className="written-sample">highlighted</span>.</li>
-                            <li>A long list scrolls inside its box. A wide value scrolls sideways.</li>
-                        </ul>
+                    <Section id="ram" title="RAM">
+                        <ReferenceTable headings={["Region", "Contents"]} rows={[
+                            ["Stack", <>Reserved stack space, local values, and saved registers. The simulator groups cells into colored function frames, with newer calls above older ones. <code>SP →</code> marks the stack pointer.</>],
+                            ["Heap", <>Active <code>malloc</code> allocations, labeled with address and size. Freed blocks disappear.</>],
+                            [<code>.data</code>, <>Writable initialized data, such as <code>.quad 3</code>.</>],
+                            [<code>.bss</code>, <>Zero-initialized storage, reserved with directives such as <code>.skip</code>.</>],
+                            [<code>.rodata</code>, "Read-only data, including format strings."],
+                        ]} />
+                        <p>Each row shows an address and up to 8 bytes. Static-data labels mark named objects; strings display as text. In stack frames, <code>[empty]</code> means no store has been recorded for that cell, not that its bytes are necessarily zero.</p>
+                        <p>The byte total beside each heading counts reserved stack space, active heap allocations, or the full static-section size, including unwritten storage. Each region scrolls independently. Blue rows mark writes made by the selected instruction.</p>
                         <CodeExample example={ex.array} onOpen={requestOpen} />
                         <CodeExample example={ex.recursion} onOpen={requestOpen} />
                         <CodeExample example={ex.malloc} onOpen={requestOpen} />
                     </Section>
 
-                    <Section id="input-output" number={5} title="Input & output"
-                        intro="Programs read input with scanf, fgets or getchar, and write output with printf, puts or putchar.">
-                        <dl className="terms two-column">
-                            <Term name="The input box">
-                                When a program needs input, Run pauses and an input box opens, headed by the program's last prompt. Type your input and select <strong>Submit</strong>.
-                                Submit also ends the input, so later reads find nothing left. If a program asks twice, answer both in one box, such as <code>18 12</code>.
-                            </Term>
-                            <Term name="Closing it">
-                                <kbd>Esc</kbd> closes the box without answering. The program waits, and <strong>Enter input</strong> under the editor opens the box again.
-                            </Term>
-                            <Term name="Stdout">
-                                Shows what the program printed up to the selected step, so Back takes later output away again. Spaces and line breaks are kept, and the panel scrolls, following the newest line while you are at the bottom.
-                            </Term>
-                            <Term name="Conventions">
-                                For <code>fgets</code>, put 0 in x2 to read from stdin. <code>scanf</code> reads one <code>%d</code> or <code>%ld</code> per call.
-                            </Term>
-                        </dl>
+                    <Section id="input-output" title="Input & output">
+                        <p>When execution needs input, playback pauses and an input dialog opens. Enter text and select Submit. In this simulator, Submit sends the text without adding a newline and then ends the input stream. Supply all remaining input together, such as <code>18 12</code> for two integer reads.</p>
+                        <p><kbd>Esc</kbd> closes the dialog while leaving the program waiting. Enter input reopens it. Stdout shows output up to the selected step, preserving spaces and line breaks. It follows new output while scrolled to the bottom.</p>
+                        <ReferenceTable headings={["Simulated call", "Supported behavior"]} rows={[
+                            [<code>printf</code>, <>Literal text, <code>%%</code>, <code>%d</code>, <code>%u</code>, <code>%ld</code>, <code>%lu</code>, <code>%c</code>, <code>%s</code>, and <code>%p</code>.</>],
+                            [<code>puts / putchar</code>, "Print a string followed by a newline / print one byte."],
+                            [<code>scanf</code>, <>One <code>%d</code> or <code>%ld</code> conversion per call.</>],
+                            [<code>fgets</code>, "Buffer address in x0, size in w1, and 0 in x2 for simulated stdin. Reads at most size − 1 bytes and adds a null terminator on success."],
+                            [<code>getchar</code>, "Reads one byte, or returns EOF when input is exhausted."],
+                        ]} />
                         <CodeExample example={ex.greeting} onOpen={requestOpen} />
                     </Section>
 
-                    <Section id="errors" number={6} title="Understanding errors"
-                        intro="Every error names its kind, and its line when it has one.">
-                        <dl className="terms two-column">
-                            <Term name="Assembly error">The program could not be assembled, so nothing ran. The message above the editor shows the line, what is wrong and often a fix. Correct it and select Load.</Term>
-                            <Term name="Not supported">Valid assembly that the simulator does not handle, such as a <code>.macro</code> or a <code>%f</code> in printf.</Term>
-                            <Term name="Runtime error">The program ran, then failed, for example by reading memory it does not own or freeing a block twice. Every step before the failure stays recorded.</Term>
-                            <Term name="Instruction limit">A run stops after 10,000 instructions, usually because of a loop that never ends. Programs also stop at 256 nested calls.</Term>
-                        </dl>
-                        <p className="callout">To find what caused a runtime error, select <strong>Back</strong> from the end and watch the values that led up to it.</p>
+                    <Section id="errors" title="Understanding errors">
+                        <ReferenceTable headings={["Message", "Meaning"]} rows={[
+                            ["Assembly error", "The source could not be assembled. Correct the reported line and select Load."],
+                            ["Not supported", "The simulator does not support this syntax or library operation."],
+                            ["Runtime error", "Execution failed. Earlier steps remain available; use Back to inspect the state before the failure."],
+                            ["Instruction limit", "The run reached 10,000 instructions. Check loops and termination conditions; a long valid program can also reach this limit."],
+                            ["Simulator / connection error", "The tool could not produce a result. Retry Load and check the backend if the error persists."],
+                        ]} />
                         <CodeExample example={ex.nullPointer} onOpen={requestOpen} />
-                        <p className="note">Messages labelled <strong>Simulator error</strong> or <strong>Cannot reach the simulator</strong> are a problem with the tool, not your program. Load again, and if it keeps happening, report it.</p>
                     </Section>
 
-                    <Section id="supported" title="What's supported"
-                        intro="The Visualizer covers the AArch64 subset used in COS 217.">
-                        <dl className="terms support-terms">
-                            <Term name="Sections">
-                                <code>.text</code>, <code>.data</code>, <code>.bss</code> and <code>.rodata</code>, written alone or with <code>.section</code>.
-                            </Term>
-                            <Term name="Directives">
-                                Constants with <code>.equ</code> or <code>.set</code>, used with or without <code>#</code>, defined above their first use. Data with <code>.string</code>, <code>.asciz</code>, <code>.ascii</code>, <code>.byte</code>, <code>.word</code>, <code>.quad</code>, <code>.skip</code> and <code>.align</code>. <code>.global</code>, <code>.type</code> and <code>.size</code> are accepted and change nothing.
-                            </Term>
-                            <Term name="Library calls">
-                                With <code>bl</code>: <code>printf</code> (%d, %u, %ld, %lu, %c, %s, %p), <code>puts</code>, <code>putchar</code>, <code>getchar</code>, <code>fgets</code>, <code>scanf</code>, <code>malloc</code>, <code>free</code> and <code>labs</code>. A function you write with the same name runs instead.
-                            </Term>
-                            <Term name="Limits">
-                                10,000 instructions per run, a 4 KiB stack, a 16 KiB heap and 256 nested calls.
-                            </Term>
-                            <Term name="Not available">
-                                Macros, other sections, files other than stdin and stdout, and instructions that expand to more than one machine instruction. Instructions outside the COS 217 set may run without an explanation.
-                            </Term>
-                        </dl>
+                    <Section id="supported" title="Simulator scope">
+                        <p>This is a COS 217 teaching simulator, not a complete operating system or C library. Ordinary instructions execute through Unicorn; library calls and the memory display use simulator conventions.</p>
+                        <ReferenceTable headings={["Feature", "Support"]} rows={[
+                            ["Sections", <><code>.text</code>, <code>.data</code>, <code>.bss</code>, and <code>.rodata</code>, alone or with <code>.section</code>.</>],
+                            ["Constants", <><code>.equ</code> and <code>.set</code>, defined before use, with or without <code>#</code> on operands.</>],
+                            ["Data directives", <><code>.string</code>, <code>.asciz</code>, <code>.ascii</code>, <code>.byte</code>, <code>.word</code>, <code>.quad</code>, <code>.skip</code>, and <code>.align</code>.</>],
+                            ["Metadata", <><code>.global</code>, <code>.type</code>, and <code>.size</code> are accepted without affecting execution.</>],
+                            ["Library calls", <><code>printf</code>, <code>puts</code>, <code>putchar</code>, <code>getchar</code>, <code>fgets</code>, <code>scanf</code>, <code>malloc</code>, <code>free</code>, and <code>labs</code>, called with <code>bl</code>. A source-defined function with the same name takes precedence.</>],
+                            ["Limits", "10,000 instructions per run, 4 KiB of stack, 16 KiB of heap, and 256 nested calls. Input and output each have a 1 MiB limit."],
+                            ["Unavailable", "Macros, other sections, file I/O, and instructions that expand into multiple machine instructions. Instructions outside the explained subset may execute without an explanation."],
+                        ]} />
                     </Section>
                 </main>
             </div>

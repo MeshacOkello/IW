@@ -23,8 +23,8 @@ export default function ReplaceCodeDialog({ title, onConfirm, onCancel, returnFo
             onCancel={(event) => { event.preventDefault(); onCancel(); }}>
             <h2 id="replace-title">Replace your code?</h2>
             <p id="replace-description">
-                The editor has code you have written. Opening “{title}” replaces it, and this
-                cannot be undone. Copy your code first if you want to keep it.
+                Opening “{title}” replaces the current source and clears its run.
+                Copy your source first to keep it.
             </p>
             <div className="confirm-actions">
                 <button type="button" ref={cancel} onClick={onCancel}>Keep my code</button>

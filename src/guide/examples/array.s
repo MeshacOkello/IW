@@ -16,7 +16,7 @@ sumLoop:
         cbnz    x2, sumLoop     // repeat until none are left
 
         adr     x4, total
-        str     x0, [x4]        // total = 9: watch .data change
+        str     x0, [x4]        // total = 9
 
         mov     w0, 0           // return 0
         ret

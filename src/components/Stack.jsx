@@ -1,4 +1,6 @@
 import MemoryFrame from "./MemoryFrame";
+import MemoryHeading from "./MemoryHeading";
+import { PredictStores } from "./PredictFields";
 
 export default function Stack({
     stackValues,
@@ -6,6 +8,7 @@ export default function Stack({
     formats,
     stackPointer,
     memoryAccesses = [],
+    predict = null,
 }) {
     const cells = stackValues ?? [];
     const allFrames = frameValues ?? [];
@@ -21,7 +24,11 @@ export default function Stack({
 
     return (
         <div className="stack-section">
-            <h5>Stack</h5>
+            <MemoryHeading name="Stack"
+                bytes={frames.reduce((total, frame) => total + frame.stack_end - frame.stack_start, 0)}
+                usageDescription="Space reserved by active stack frames" />
+
+            <PredictStores predict={predict} region="stack" formats={formats} />
 
             <div className="stack-labels">
                 <span>Address</span>

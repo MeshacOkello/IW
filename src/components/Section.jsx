@@ -1,6 +1,8 @@
 import { formatNumber } from "../numberFormat";
 import { cellValue, memoryCells } from "../memoryCells";
 import VirtualRows from "./VirtualRows";
+import MemoryHeading from "./MemoryHeading";
+import { PredictStores } from "./PredictFields";
 
 // Addresses and their contents get the room; a label is only a marker.
 const CELL_HEIGHT = 20;
@@ -46,7 +48,7 @@ function sectionRows({ address, size, symbols, contents }) {
     return rows;
 }
 
-export default function Section({ name, section, formats, memoryAccesses = [] }) {
+export default function Section({ name, section, formats, memoryAccesses = [], predict = null }) {
     const { address = 0, size = 0, symbols = [], strings = [], contents = "" } = section ?? {};
     const rows = sectionRows({ address, size, symbols, contents });
     const writes = memoryAccesses.filter((access) => access.kind === "write");
@@ -86,9 +88,11 @@ export default function Section({ name, section, formats, memoryAccesses = [] })
 
     return (
         <div className={`section-region section-region-${name.replace(".", "")}`}>
-            <h5 title={size ? `${name} · ${formatNumber(address, formats.address)} · ${formatNumber(size, formats.data)} B` : `${name} · empty`}>
-                {name}
-            </h5>
+            <MemoryHeading name={name} bytes={size}
+                title={size ? `${name} · ${formatNumber(address, formats.address)}` : `${name} · empty`}
+                usageDescription="Section size, including alignment and reserved storage" />
+
+            <PredictStores predict={predict} region={name} formats={formats} />
 
             <div className="stack-labels">
                 <span>Address</span>
@@ -97,7 +101,7 @@ export default function Section({ name, section, formats, memoryAccesses = [] })
 
             {rows.length === 0 ? (
                 <div className="section-bar">
-                    <p className="heap-empty">No {name} data</p>
+                    <p className="heap-empty">Empty section</p>
                 </div>
             ) : (
                 <VirtualRows

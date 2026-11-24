@@ -7,5 +7,5 @@ export const SECTIONS = [
     { id: "ram", title: "RAM" },
     { id: "input-output", title: "Input & output" },
     { id: "errors", title: "Understanding errors" },
-    { id: "supported", title: "What's supported" },
+    { id: "supported", title: "Simulator scope" },
 ];

@@ -1,4 +1,4 @@
-// Compute 4! recursively and watch a stack frame appear for every call.
+// Compute 4! recursively. Each call reserves a stack frame.
         .section .text
 
         // long fact(long n)

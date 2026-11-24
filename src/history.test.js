@@ -42,3 +42,17 @@ test('modal title uses only the final prompt-like line in the current input wind
     assert.equal(inputPrompt(trace([0, 1], [chunk('Choose an option?\n')]), {stdout_start: 0}), 'Choose an option?');
     assert.equal(inputPrompt(trace([0], []), {stdout_start: 0}), 'Input');
 });
+
+test('a zero write stays touched on later steps but not before it or after Reset', async () => {
+    const { touchedRegistersAt } = await import('./history.js');
+    const registers = () => Array(34).fill(0);
+    const history = {
+        register_states: [registers(), registers(), registers(), registers()],
+        register_writes: [[], [0], [1], []],
+    };
+    assert.deepEqual([...touchedRegistersAt(history, 0)], []);
+    assert.deepEqual([...touchedRegistersAt(history, 1)], [0]);
+    assert.deepEqual([...touchedRegistersAt(history, 3)], [0, 1]);
+    assert.deepEqual([...touchedRegistersAt(history, 1)], [0]);
+    assert.deepEqual([...touchedRegistersAt(null, 0)], []);
+});

@@ -1,4 +1,4 @@
-// Arithmetic: watch values move through registers.
+// Compute a sum, difference, and product.
         .section .text
         .global main
 main:

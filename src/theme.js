@@ -1,5 +1,5 @@
 // The editor's dark mode switch. The choice is remembered per browser, and
-// until one is made the page follows the system setting.
+// until one is made the editor follows the system setting.
 const STORAGE_KEY = "assembly-visualizer-theme";
 
 function stored() {

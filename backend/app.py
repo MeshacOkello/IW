@@ -11,6 +11,7 @@ from heap import HeapError
 from library_io import InputProtocolError
 from simulator import run_program
 from instruction_explainer import explain_trace
+from register_writes import register_writes
 
 app = Flask(__name__)
 logger = logging.getLogger(__name__)
@@ -229,6 +230,7 @@ def simulate():
 
     response = {
         'register_states': register_states,
+        'register_writes': register_writes(executed_statements, register_states, library_calls),
         'stack_states': stack_states,
         'executed_addresses': executed_addresses,
         'instruction_numbers': instruction_numbers,

@@ -6,13 +6,14 @@ import MemoryPanel from "./MemoryPanel";
 import { useState, useEffect, useRef, useCallback, useImperativeHandle } from "react";
 import StdOut from "./StdOut";
 import StdIn from "./StdIn";
-import { extendHistory, stdoutAt, inputPrompt } from "../history";
+import { extendHistory, stdoutAt, inputPrompt, touchedRegistersAt } from "../history";
 import { DEFAULT_RUN_DELAY, runDelayFrom } from "../runSpeed";
 import ErrorMessage from "./ErrorMessage";
 import { fromClient, fromResponse, fromTransport } from "../errors";
 import FlagsPanel from "./FlagsPanel";
 import { applyTheme, initialTheme } from "../theme";
-import PageNav from "./PageNav";
+import PredictPanel from "./PredictPanel";
+import { checkPredictions, emptyScore, predictionFields, recordCheck } from "../predict";
 
 // Carries the normalized error rather than a bare string, so the panel can
 // show the line, the source line and the suggestion alongside the message.
@@ -38,7 +39,7 @@ mul x5, x3, x2`;
 
 // `ref` lets the How to use page put an example in the editor; `active` is
 // false while that page is showing and this workspace is kept, hidden.
-export default function AssemblyVisualizer({ ref, active = true }) {
+export default function AssemblyVisualizer({ ref, active = true, formats }) {
     const [assemblyCode, setAssemblyCode] = useState(STARTER_PROGRAM);
     // The code as it last arrived from outside the editor: the starter
     // program or an opened example. Anything else was written here.
@@ -64,10 +65,15 @@ export default function AssemblyVisualizer({ ref, active = true }) {
     const [stepIndex, setStepIndex] = useState(0);
     const [isRunning, setIsRunning] = useState(false);
     const [runDelay, setRunDelay] = useState(String(DEFAULT_RUN_DELAY));
-    const [addressFormat, setAddressFormat] = useState("hex");
-    const [dataFormat, setDataFormat] = useState("dec");
     const [theme, setTheme] = useState(initialTheme);
-    const formats = { address: addressFormat, data: dataFormat };
+    const workspaceRef = useRef(null);
+
+    // Predict mode. A question holds the step it was asked at; the snapshot
+    // shown stays there until Check or Skip moves on to the next one.
+    const [predictMode, setPredictMode] = useState(false);
+    const [question, setQuestion] = useState(null);
+    const [review, setReview] = useState(null);
+    const [score, setScore] = useState(emptyScore);
 
     const exactStack = history?.exact_values?.[stepIndex]?.stack;
     const stackValues = history?.stack_states[stepIndex]?.map((cell) =>
@@ -114,7 +120,56 @@ export default function AssemblyVisualizer({ ref, active = true }) {
     }, []);
     const canPause = isRunning || (pending !== null && runRequested);
 
+    function clearPrediction() {
+        setQuestion(null);
+        setReview(null);
+    }
+
+    function resetScore() {
+        clearPrediction();
+        setScore(emptyScore());
+    }
+
+    function changePredictMode(enabled) {
+        setRunIntent(false);
+        setIsRunning(false);
+        clearPrediction();
+        setPredictMode(enabled);
+    }
+
+    function sourceLineAt(step) {
+        const line = history?.executed_lines?.[step];
+        return line == null ? "" : (run?.assembly_code ?? "").split("\n")[line - 1] ?? "";
+    }
+
+    const setAnswer = useCallback((id, value) => {
+        setQuestion((current) => current && { ...current, answers: { ...current.answers, [id]: value } });
+    }, []);
+
+    function finishQuestion(revealed) {
+        if (!question) return;
+        const step = question.step + 1;
+        let check = null;
+        let counted = false;
+        if (!revealed) {
+            check = checkPredictions(question.fields, question.answers);
+            const recorded = recordCheck(score, {
+                step: question.step,
+                line: history.executed_lines[step],
+                instruction: question.info.text,
+                fields: question.fields,
+                check,
+            });
+            setScore(recorded.score);
+            counted = recorded.counted;
+        }
+        setReview({ step, fields: question.fields, check, counted, revealed });
+        setQuestion(null);
+        setStepIndex(step);
+    }
+
     function handleRun() {
+        if (predictMode && !isRunning) return;
         if (isRunning || (pending && runIntent.current)) {
             setRunIntent(false);
             setIsRunning(false);
@@ -159,6 +214,7 @@ export default function AssemblyVisualizer({ ref, active = true }) {
         setAssemblyCode(source);
         setIsRunning(false);
         setOpenedExample(null);
+        clearPrediction();
     }
 
     useImperativeHandle(ref, () => ({
@@ -183,6 +239,7 @@ export default function AssemblyVisualizer({ ref, active = true }) {
             setInputError(null);
             setDismissedInput(null);
             setOpenedExample(title);
+            resetScore();
             focusLoadWhenShown.current = true;
         },
     }));
@@ -235,6 +292,7 @@ export default function AssemblyVisualizer({ ref, active = true }) {
         setHistory(null);
         setRun(null);
         setStepIndex(0);
+        resetScore();
         try {
             const data = await simulate(settings, request.controller.signal);
             if (!isCurrentRequest(request)) return;
@@ -284,16 +342,25 @@ export default function AssemblyVisualizer({ ref, active = true }) {
     }
 
     function handleNext() {
-        if (history == null || busyRef.current || sourceChanged) return;
+        if (history == null || busyRef.current || sourceChanged || question) return;
         setRunIntent(false);
         setIsRunning(false);
-        if (stepIndex < history.register_states.length - 1) {
-            setStepIndex(stepIndex + 1);
+        setReview(null);
+        if (stepIndex >= history.register_states.length - 1) return;
+        if (predictMode) {
+            const { info, fields } = predictionFields(history, stepIndex, sourceLineAt(stepIndex + 1));
+            // Nothing this instruction could change: there is nothing to ask.
+            if (fields.length > 0) {
+                setQuestion({ step: stepIndex, info, fields, answers: {} });
+                return;
+            }
         }
+        setStepIndex(stepIndex + 1);
     }
 
     function handleBack() {
         if (busyRef.current) return;
+        clearPrediction();
         setRunIntent(false);
         setIsRunning(false);
         if (stepIndex > 0) setStepIndex(stepIndex - 1);
@@ -306,6 +373,7 @@ export default function AssemblyVisualizer({ ref, active = true }) {
         setInputError(null);
         setDismissedInput(pending?.occurrence ?? null);
         setStepIndex(0);
+        resetScore();
     }
 
     useEffect(() => {
@@ -325,37 +393,36 @@ export default function AssemblyVisualizer({ ref, active = true }) {
         return () => clearTimeout(timer);
     }, [stepIndex, isRunning, history, runDelay, sourceChanged, busy, setRunIntent]);
 
+    // Put the cursor in the first field whenever a new question opens.
+    const questionStep = question?.step ?? null;
+    useEffect(() => {
+        if (questionStep === null) return;
+        workspaceRef.current?.querySelector("[data-predict-field]")?.focus();
+    }, [questionStep]);
+
+    // After Check or Skip, Enter on Next asks about the following instruction.
+    // Next is only enabled again once the question has closed.
+    const reviewStep = review?.step ?? null;
+    useEffect(() => {
+        if (reviewStep !== null) nextButton.current?.focus();
+    }, [reviewStep]);
+
+    const predictView = question
+        ? { phase: "ask", fields: question.fields, answers: question.answers, setAnswer, submit: () => finishQuestion(false) }
+        : review && review.step === stepIndex
+            ? { phase: "review", fields: review.fields, check: review.check, revealed: review.revealed }
+            : null;
+    const shownLine = question ? history.executed_lines[question.step + 1] : history?.executed_lines[stepIndex];
+
     return(
         <div className="assembly-visualizer">
-            <header className="app-header">
-                <div className="brand-group">
-                    <h1>Assembly Visualizer</h1>
-                    <PageNav current="visualizer" />
-                </div>
-                <div className="number-formats">
-                    <label>
-                        Address Format:
-                        <select value={addressFormat} onChange={(event) => setAddressFormat(event.target.value)}>
-                            <option value="hex">Hex</option>
-                            <option value="dec">Dec</option>
-                        </select>
-                    </label>
-                    <label>
-                        Data Format:
-                        <select value={dataFormat} onChange={(event) => setDataFormat(event.target.value)}>
-                            <option value="hex">Hex</option>
-                            <option value="dec">Dec</option>
-                        </select>
-                    </label>
-                </div>
-            </header>
-
-            <div className="workspace">
+            <main className="workspace" aria-label="Assembly workspace" ref={workspaceRef}>
+                <h1 className="visually-hidden">Assembly workspace</h1>
                 <section className="panel code-panel" aria-label="Code editor">
                     <div className="panel-head">
                         <h2>Code Editor</h2>
                         <label className="theme-switch">
-                            Dark mode
+                            Dark editor
                             <input
                                 type="checkbox"
                                 role="switch"
@@ -366,23 +433,34 @@ export default function AssemblyVisualizer({ ref, active = true }) {
                         </label>
                     </div>
 
-                    <ExecutionControls onLoad={handleLoad} onNext={handleNext} onBack={handleBack} onReset={handleReset} currentStep={stepIndex} totalSteps={history ? history.register_states.length - 1 : 0} onRun={handleRun} canPause={canPause} runDelay={runDelay} onRunDelayChange={setRunDelay} busy={busy} sourceChanged={sourceChanged} nextButtonRef={nextButton} loadButtonRef={loadButton}/>
+                    <ExecutionControls onLoad={handleLoad} onNext={handleNext} onBack={handleBack} onReset={handleReset} currentStep={stepIndex} totalSteps={history ? history.register_states.length - 1 : 0} onRun={handleRun} canPause={canPause} runDelay={runDelay} onRunDelayChange={setRunDelay} busy={busy} sourceChanged={sourceChanged} nextButtonRef={nextButton} loadButtonRef={loadButton}
+                        predictMode={predictMode} onPredictModeChange={changePredictMode} asking={question !== null}
+                        hasScore={score.total > 0}/>
+
+                    {predictMode && history && !sourceChanged && (
+                        <PredictPanel question={question} review={review?.step === stepIndex ? review : null}
+                            score={score} practice={question !== null && score.scoredSteps.includes(question.step)}
+                            onCheck={() => finishQuestion(false)} onSkip={() => finishQuestion(true)} formats={formats} />
+                    )}
 
                     {loadError && <ErrorMessage error={loadError} formats={formats} />}
 
                     <CodeEditor
                         assemblyCode={assemblyCode}
                         setAssemblyCode={changeSource}
-                        activeLine={sourceChanged ? null : history?.executed_lines[stepIndex]}
+                        activeLine={sourceChanged ? null : shownLine}
+                        predicting={question !== null}
                     />
 
                     <NextInstruction
                         assemblyCode={run?.assembly_code ?? assemblyCode}
-                        currentLine={history?.executed_lines?.[stepIndex]}
+                        currentLine={shownLine}
                         isLoaded={history !== null}
-                        explanation={history?.explanations?.[stepIndex]}
-                        explanationParts={history?.explanation_parts?.[stepIndex]}
+                        // The explanation would give the answer away.
+                        explanation={question ? null : history?.explanations?.[stepIndex]}
+                        explanationParts={question ? null : history?.explanation_parts?.[stepIndex]}
                         formats={formats}
+                        label={question ? "Next instruction" : undefined}
                     />
 
                     <StdOut key={run?.id ?? 'empty'} output={stdoutAt(history, stepIndex)} />
@@ -413,11 +491,14 @@ export default function AssemblyVisualizer({ ref, active = true }) {
                         registerValues={registerSnapshot(history, stepIndex)}
                         previousRegisterValues={stepIndex > 0 ? registerSnapshot(history, stepIndex - 1) : null}
                         pointerRegisters={history?.pointer_states?.[stepIndex]}
+                        touchedRegisters={touchedRegistersAt(history, stepIndex)}
                         formats={formats}
+                        predict={predictView}
                     />
                     <FlagsPanel
                         registerValues={registerSnapshot(history, stepIndex)}
                         formats={formats}
+                        predict={predictView}
                     />
                 </section>
 
@@ -431,9 +512,10 @@ export default function AssemblyVisualizer({ ref, active = true }) {
                         stackPointer={history?.register_states?.[stepIndex]?.[31]}
                         memoryAccesses={history?.memory_accesses?.[stepIndex]}
                         sections={sectionContents}
+                        predict={predictView}
                     />
                 </section>
-            </div>
+            </main>
 
             {dialogOpen && (
                 <StdIn key={pending.request_id} prompt={inputPrompt(history, pending)} busy={busy}

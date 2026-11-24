@@ -1,25 +1,25 @@
 :root {
   /* Page and surfaces */
-  --page: #eaf0fb;
-  --page-edge: #dde7f8;
+  --page: #f3f5f7;
+  --page-edge: #f3f5f7;
   --surface: #ffffff;
   --surface-sunken: #f8fafc;
-  --surface-head: #f1f5fb;
+  --surface-head: #f3f5f7;
 
   /* Text */
-  --heading-ink: #16254f;
-  --text-h: #1e293b;
-  --text: #526077;
-  --muted: #8494ad;
+  --heading-ink: #222d3c;
+  --text-h: #273446;
+  --text: #556171;
+  --muted: #6e7a89;
 
-  --border: #dce5f2;
-  --border-strong: #c3d1e6;
+  --border: #dce1e7;
+  --border-strong: #bec8d4;
 
   /* Controls */
-  --accent: #2563eb;
-  --accent-hover: #1d4ed8;
+  --accent: #285dc7;
+  --accent-hover: #214fae;
   --accent-ink: #ffffff;
-  --accent-soft: #dbeafe;
+  --accent-soft: #e9effc;
   --focus: #93b4fb;
 
   --highlight: #dbeafe;
@@ -38,9 +38,9 @@
   --code-string: #b45309;
   --code-name: #334155;
 
-  --radius: 12px;
-  --radius-sm: 7px;
-  --shadow: 0 1px 2px rgb(16 37 79 / 6%), 0 1px 3px rgb(16 37 79 / 4%);
+  --radius: 8px;
+  --radius-sm: 5px;
+  --shadow: 0 1px 2px rgb(25 35 50 / 4%);
 
   --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
   --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
@@ -55,7 +55,7 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
-:root[data-theme='dark'] {
+:root[data-theme='dark'] .editor-container {
   /* Neutral greys, a touch cool but not blue: surfaces that read as paper in
      a dark room rather than as a tinted overlay. */
   --page: #141518;
@@ -67,7 +67,7 @@
   --heading-ink: #ededef;
   --text-h: #d4d5d9;
   --text: #97989f;
-  --muted: #6b6c74;
+  --muted: #92949d;
 
   --border: #2a2b30;
   --border-strong: #3b3c43;
@@ -90,7 +90,7 @@
   --code-register: #58bfb2;
   --code-immediate: #a7c986;
   /* Comments step back instead of competing with the code. */
-  --code-comment: #6c7a63;
+  --code-comment: #93a18b;
   --code-string: #cf9b63;
   --code-name: #b9bac1;
 

@@ -219,16 +219,16 @@ def explain_mov(step):
         if source['special'] == 'zr':
             text = f"Set {name(destination)} to {step.data(0)} ({source['name']} always reads as 0)."
         else:
-            text = f"Copy {name(source)} into {name(destination)}. {name(destination)} = {shown}."
+            text = f"{name(destination)} = {shown} (from {name(source)})."
     else:
         label = source['text'] if source['kind'] == 'imm' else source['name']
         value = source['value'] if source['kind'] == 'imm' else None
         if value is not None and (value & mask(destination['bits'])) != result:
             raise Unexplained(TRACE_MISMATCH)
         if value is not None:
-            text = f"Put {shown} into {name(destination)}."
+            text = f"{name(destination)} = {shown}."
         else:
-            text = f"Put {label} ({shown}) into {name(destination)}."
+            text = f"{name(destination)} = {label} ({shown})."
     return text + step.destination_notes(destination, result)
 
 
@@ -257,7 +257,7 @@ def explain_add_sub(step):
     destination = step.operand(0, 'reg')
     first = step.operand(1, 'reg')
     bits = destination['bits']
-    second, second_formula, _ = step.second_operand(2, bits)
+    second, second_formula, second_shown = step.second_operand(2, bits)
     adding = step.mnemonic in ('add', 'adds')
     sign = '+' if adding else '−'
 
@@ -285,7 +285,10 @@ def explain_add_sub(step):
     if destination['special'] == 'zr':
         text += f"Compute {name(first)} {sign} {second_formula} and throw the result away (xzr discards writes)."
     else:
-        text += f"{name(destination)} = {name(first)} {sign} {second_formula}."
+        if shows_address or second is None:
+            text += f"{name(destination)} = {name(first)} {sign} {second_formula} = {step.show(destination, result, 'after')}."
+        else:
+            text += f"{name(destination)} = {step.show(first, a)} {sign} {second_shown} = {step.show(destination, result, 'after')}."
         if destination['special'] == 'sp':
             text += f" SP moves from {step.address(step.before[SP])} to {step.address(result)}."
         elif second is not None and not shows_address:
@@ -308,7 +311,7 @@ def explain_neg(step):
     result = step.read(destination, 'after')
     if (-value) & mask(bits) != result:
         raise Unexplained(TRACE_MISMATCH)
-    return (f"{name(destination)} = −{name(source)} (negate: flip the sign)."
+    return (f"{name(destination)} = −({step.show(source, value)}) = {step.show(destination, result, 'after')}."
             + step.destination_notes(destination, result))
 
 
@@ -321,7 +324,7 @@ def explain_mul(step):
     result = step.read(destination, 'after')
     if (a * b) & mask(bits) != result:
         raise Unexplained(TRACE_MISMATCH)
-    text = f"{name(destination)} = {name(first)} × {name(second)}."
+    text = f"{name(destination)} = {step.show(first, a)} × {step.show(second, b)} = {step.show(destination, result, 'after')}."
     if signed(a, bits) * signed(b, bits) != signed(result, bits):
         text += f" The full product doesn't fit in {bits} bits, so only the low {bits} bits are kept."
     return text + step.destination_notes(destination, result)
@@ -344,7 +347,8 @@ def explain_divide(step):
         kind = "unsigned division, rounds down"
     if expected & mask(bits) != result:
         raise Unexplained(TRACE_MISMATCH)
-    text = f"{name(destination)} = {name(first)} ÷ {name(second)} ({kind})."
+    show = (lambda value: step.data(signed(value, bits))) if is_signed else step.data
+    text = f"{name(destination)} = {show(a)} ÷ {show(b)} = {show(result)} ({kind})."
     if b == 0:
         text += f" {name(second)} is 0, and dividing by 0 gives 0 on AArch64; there is no error."
     return text + step.destination_notes(destination, result)
@@ -364,7 +368,7 @@ def explain_logic(step):
     destination = step.operand(0, 'reg')
     first = step.operand(1, 'reg')
     bits = destination['bits']
-    second, second_formula, _ = step.second_operand(2, bits)
+    second, second_formula, second_shown = step.second_operand(2, bits)
     if second is None:
         raise Unexplained(f"This form of {step.mnemonic} isn't explained yet.")
     word, operation, meaning = LOGIC[step.mnemonic]
@@ -375,7 +379,7 @@ def explain_logic(step):
         raise Unexplained(TRACE_MISMATCH)
     if step.mnemonic == 'ands':
         check_flags(step, {'N': result >> (bits - 1), 'Z': int(result == 0), 'C': 0, 'V': 0})
-    text = f"{name(destination)} = {name(first)} {word} {second_formula} (bitwise: {meaning})."
+    text = f"{name(destination)} = {step.show(first, a)} {word} {second_shown} = {step.show(destination, result, 'after')} ({meaning})."
     if destination['special'] == 'zr':
         text += " The result is thrown away (xzr discards writes)."
     else:
@@ -410,7 +414,7 @@ def explain_shift(step):
         raw = step.read(amount_operand, 'before')
         amount = raw % bits
         amount_text = name(amount_operand)
-        factor = f"2^{name(amount_operand)}"
+        factor = step.data(2 ** amount) if amount <= 16 else f"2^{amount}"
         if raw >= bits:
             note = f" Only {name(amount_operand)} mod {bits} is used as the shift amount."
     value = step.read(source, 'before')
@@ -419,7 +423,7 @@ def explain_shift(step):
         raise Unexplained(TRACE_MISMATCH)
     direction, meaning = SHIFT_MEANINGS[step.mnemonic]
     unit = 'bit' if amount_operand['kind'] == 'imm' and amount == 1 else 'bits'
-    return (f"{name(destination)} = {name(source)} shifted {direction} by {amount_text} {unit} "
+    return (f"{name(destination)} = {step.show(source, value)} shifted {direction} by {step.data(amount)} {unit} = {step.show(destination, result, 'after')} "
             f"({meaning.format(factor=factor)})."
             + note + step.destination_notes(destination, result))
 
@@ -467,7 +471,7 @@ def explain_compare(step, offset=0):
                 text += f" {signed_relation}, whether read as signed or unsigned."
             else:
                 text += f" Signed: {signed_relation}. Unsigned: {unsigned_relation}."
-    return text + " Conditional branches such as beq or blt read these flags."
+    return text
 
 
 # ---------- branches and calls ----------
@@ -485,16 +489,14 @@ def condition_holds(condition, f):
 def condition_reason(condition, f, data):
     n, z, c, v = f['N'], f['Z'], f['C'], f['V']
     if condition in ('eq', 'ne'):
-        return f"Z is {data(z)} (the compared values were {'equal' if z else 'not equal'})"
+        return f"Z = {data(z)}"
     if condition in ('lt', 'ge'):
-        return f"N is {data(n)} and V is {data(v)} ({'N ≠ V: signed less than' if n != v else 'N = V: signed greater than or equal'})"
+        return f"N = {data(n)} and V = {data(v)} ({'N ≠ V' if n != v else 'N = V'})"
     if condition in ('gt', 'le'):
-        greater = z == 0 and n == v
-        return f"Z is {data(z)}, N is {data(n)}, V is {data(v)} ({'signed greater than' if greater else 'signed less than or equal'})"
+        return f"Z = {data(z)}, N = {data(n)}, V = {data(v)}"
     if condition in ('lo', 'hs'):
-        return f"C is {data(c)} ({'unsigned lower' if c == 0 else 'unsigned higher or same'})"
-    higher = c == 1 and z == 0
-    return f"C is {data(c)} and Z is {data(z)} ({'unsigned higher' if higher else 'unsigned lower or same'})"
+        return f"C = {data(c)}"
+    return f"C = {data(c)} and Z = {data(z)}"
 
 
 def branch_taken(step):
@@ -513,7 +515,7 @@ def explain_branch(step):
     target = step.operand(0, 'label')['name']
     taken = branch_taken(step)
     if step.mnemonic == 'b':
-        return f"Always jump to {target} ({step.address(step.after[PC])}); b is an unconditional branch."
+        return f"Jump to {target} ({step.address(step.after[PC])})."
     condition = step.mnemonic[1:]
     current = flags(step.before)
     holds = condition_holds(condition, current)
@@ -521,7 +523,7 @@ def explain_branch(step):
     reason = condition_reason(condition, current, step.data)
     if holds:
         return f"Jump to {target} because {reason}."
-    return f"Don't jump to {target} because {reason}; continue with the next instruction."
+    return f"Continue to the next instruction because {reason}."
 
 
 def explain_compare_branch(step):
@@ -534,12 +536,12 @@ def explain_compare_branch(step):
     holds = (value == 0) == jumps_on_zero
     check_branch(taken, holds)
     shown = step.show(register, value)
-    note = f" ({step.mnemonic} checks the register directly and doesn't use the flags.)"
+    note = " Flags are unchanged."
     if holds:
         reason = f"{name(register)} is 0" if jumps_on_zero else f"{name(register)} is {shown}, not 0"
         return f"Jump to {target} because {reason}." + note
     reason = f"{name(register)} is {shown}, not 0" if jumps_on_zero else f"{name(register)} is 0"
-    return f"Don't jump to {target} because {reason}; continue with the next instruction." + note
+    return f"Continue to the next instruction because {reason}." + note
 
 
 def explain_call(step):
@@ -548,8 +550,8 @@ def explain_call(step):
     return_address = step.before[PC] + 4
     if step.after[30] != return_address:
         raise Unexplained(TRACE_MISMATCH)
-    text = (f"Call {target}: save the return address {step.address(return_address)} (the next instruction) in x30, "
-            f"then jump to {target} ({step.address(step.after[PC])}). Its ret will come back to {step.address(return_address)}.")
+    text = (f"Call {target} at {step.address(step.after[PC])}. "
+            f"x30 = {step.address(return_address)} (the return address).")
     if step.before[30] not in (0, return_address):
         text += f" x30's old value {step.address(step.before[30]) if 30 in step.before_pointers else step.data(step.before[30])} is overwritten, which is why functions save x30 on the stack."
     return text
@@ -564,7 +566,7 @@ def explain_return(step):
     if step.mnemonic == 'br':
         text = f"Jump to the address in {name(register)} ({step.address(target)})."
         if register['number'] == 30:
-            text += " Since x30 holds the return address, this returns to the caller like ret."
+            text += " br x30 uses the same target register as the default ret."
         return text
     return f"Return to the caller: jump to the return address in {name(register)} ({step.address(target)})."
 
@@ -607,7 +609,7 @@ def stack_note(step, address, size):
     cells = [cell for cell in step.before_stack
              if cell['address'] < address + size and address < cell['address'] + cell['size']]
     if not cells or all(cell['value'] is None for cell in cells):
-        return " Nothing was stored here yet, so this reads leftover memory."
+        return " No initialized value is recorded for this stack cell."
     return ''
 
 
@@ -656,7 +658,7 @@ def explain_memory(step):
     if is_load:
         result = step.read(register, 'after')
         raw = result & mask(size * 8)
-        body = f"load {plural(size, step.data)} from {location} into {name(register)}. {name(register)} = {step.show(register, result, 'after')}."
+        body = f"load {step.show(register, result, 'after')} into {name(register)} from {location} ({plural(size, step.data)})."
         if step.mnemonic in ('ldrb', 'ldrh'):
             body += f" The upper bits of {name(register)} are filled with 0s (zero extension)."
         elif step.mnemonic in ('ldrsb', 'ldrsh', 'ldrsw'):
@@ -677,7 +679,7 @@ def explain_memory(step):
             value_text = f"{step.show(register, stored)} from {name(register)}"
         else:
             value_text = f"{step.data(stored)} from {name(register)}"
-        body = f"store {value_text} into {plural(size, step.data)} at {location}."
+        body = f"store {value_text} at {location} ({plural(size, step.data)})."
         if stored != full:
             lowest = "lowest byte is" if size == 1 else f"lowest {step.data(size)} bytes are"
             body += f" {name(register)} is {step.show(register, full)}; only its {lowest} stored."
@@ -686,10 +688,10 @@ def explain_memory(step):
 
     old_sp, new_sp = step.before[SP], step.after[SP]
     if base['special'] == 'sp' and memory['mode'] == 'pre' and not is_load and new_sp < old_sp:
-        return (f"Push {name(register)} onto the stack (make room, then save it): SP moves down "
+        return (f"Reserve stack space: SP moves down "
                 f"{step.data(old_sp - new_sp)} bytes ({step.address(old_sp)} → {step.address(new_sp)}), then " + body)
     if base['special'] == 'sp' and memory['mode'] == 'post' and is_load and new_sp > old_sp:
-        return (f"Pop {name(register)} off the stack (read it back, then release the space): " + body
+        return (f"Restore {name(register)}: " + body
                 + f" Then SP moves up {step.data(new_sp - old_sp)} bytes ({step.address(old_sp)} → {step.address(new_sp)}).")
     if memory['mode'] == 'pre':
         return (f"Pre-index: first {name(base)} becomes {name(base)} + {offset_text} = {step.address(new_base)}; then " + body)
@@ -745,12 +747,12 @@ def explain_step(line, before, after, before_stack, accesses, numbers, before_po
                  constants=()):
     parsed = parse_instruction(line)
     if parsed is None:
-        return "This line is not an instruction, so there is nothing to explain."
+        return "This line is not an instruction."
     mnemonic = parsed['mnemonic']
     operands = resolve_constants(parsed['operands'], dict(constants))
     handler = HANDLERS.get(mnemonic)
     if handler is None:
-        return f"No explanation for {mnemonic}: it isn't one of the COS 217 instructions this panel covers."
+        return f"No explanation is available for {mnemonic}."
     if operands is None:
         return f"This form of {mnemonic} isn't explained yet."
     try:
@@ -779,7 +781,7 @@ def explain_heap_call(call, argument, result, numbers):
         value = argument - (1 << 64) if argument >= 1 << 63 else argument
         if value == -(1 << 63):
             return (f"labs({numbers.data(value)}) has no positive long result, because the largest long is "
-                    f"{numbers.data((1 << 63) - 1)}. Like the real C library, it returns {numbers.data(value)} unchanged in x0.")
+                    f"{numbers.data((1 << 63) - 1)}. The simulator returns {numbers.data(value)} unchanged in x0; C does not define labs for this value.")
         return f"labs returns the absolute value of {numbers.data(value)}, which is {numbers.data(abs(value))}, in x0."
     if call in ('printf', 'puts', 'putchar'):
         return f"{call} writes to stdout and returns {numbers.data(result)} in w0."
@@ -792,9 +794,8 @@ def explain_heap_call(call, argument, result, numbers):
 # turned snapshot i - 1 into snapshot i. explanations[0] is None.
 def explain_program_return(returned, numbers):
     function = returned['function']
-    return (f"Return from {function}: x30 still holds the return address the program started with, "
-            f"so {function} hands control back to the system and the program ends. "
-            f"{function} returned {numbers.data(returned['value'])} in w0.")
+    return (f"{function} returned {numbers.data(returned['value'])} in w0. "
+            f"In this simulator, {function} hands control back to the system and execution stops.")
 
 
 # `returned` is the trace status's record of the first function returning, if
@@ -816,6 +817,34 @@ def explain_trace(executed_statements, register_states, stack_states, memory_acc
                 statement.text, before, after, stack_states[i - 1], memory_accesses[i],
                 numbers, pointer_states[i - 1], pointer_states[i], statement.constants,
             )
+        parsed = parse_instruction(statement.text)
+        if i > 1 and text != TRACE_MISMATCH and parsed and parsed['mnemonic'] in BRANCH_CONDITIONS:
+            previous = executed_statements[i - 2]
+            comparison = parse_instruction(previous.text)
+            if comparison and comparison['mnemonic'] == 'cmp' and comparison['operands']:
+                operands = resolve_constants(comparison['operands'], dict(previous.constants))
+                compare_step = Step('cmp', operands, register_states[i - 2], before,
+                                    stack_states[i - 2], memory_accesses[i - 1], numbers,
+                                    pointer_states[i - 2], pointer_states[i - 1])
+                try:
+                    first = compare_step.operand(0, 'reg')
+                    second, _, _ = compare_step.second_operand(1, first['bits'])
+                    a = compare_step.read(first, 'before')
+                    if second is not None and subtraction_flags(a, second, first['bits']) == flags(before):
+                        condition = parsed['mnemonic'][1:]
+                        holds = condition_holds(condition, flags(before))
+                        relation = {'eq': '=', 'ne': '≠', 'lt': '<', 'le': '≤', 'gt': '>', 'ge': '≥',
+                                    'lo': '<', 'ls': '≤', 'hi': '>', 'hs': '≥'}[condition]
+                        if not holds:
+                            relation = {'=': '≠', '≠': '=', '<': '≥', '≤': '>', '>': '≤', '≥': '<'}[relation]
+                        unsigned = condition in ('lo', 'ls', 'hi', 'hs')
+                        show = numbers.data if unsigned else lambda value: numbers.data(signed(value, first['bits']))
+                        target = parsed['operands'][0]['name']
+                        action = f"Jump to {target}" if holds else "Continue to the next instruction"
+                        text = (f"{action} because {name(first)} ({show(a)}) {relation} {show(second)}"
+                                + (" (unsigned)." if unsigned else "."))
+                except (Unexplained, KeyError):
+                    pass
         plain, parts = numbers.render(text)
         explanations.append(plain)
         explanation_parts.append(parts)

@@ -65,16 +65,27 @@ export default function CodeExample({ example, onOpen }) {
         timer.current = setTimeout(() => setCopyState(null), 2500);
     }
 
+    const lines = example.source.trimEnd().split("\n");
+    const long = lines.length > 16;
+    const excerpt = example.excerpt ?? lines.filter(line => line.trim() && !line.trim().startsWith("//")).slice(0, 8).join("\n");
+
     return (
         <article className={`example-card${example.intentionalError ? " example-error" : ""}`}
             aria-labelledby={titleId}>
             <header className="example-head">
                 {example.intentionalError && <p className="example-flag">Intentional error</p>}
-                <h3 id={titleId}>Try it: {example.title.charAt(0).toLowerCase() + example.title.slice(1)}</h3>
+                <h3 id={titleId}>{example.title}</h3>
                 <p className="example-objective">{example.objective}</p>
             </header>
 
-            <CodeBlock source={example.source} label={`${example.title} program`} />
+            {long ? <>
+                <p className="excerpt-label">Excerpt</p>
+                <CodeBlock source={excerpt} label={`${example.title} excerpt`} />
+                <details className="full-code">
+                    <summary>Full program ({lines.length} lines)</summary>
+                    <CodeBlock source={example.source} label={`${example.title} full program`} />
+                </details>
+            </> : <CodeBlock source={example.source} label={`${example.title} program`} />}
 
             <p className="example-expected">
                 <strong>Expected result:</strong> <Expected parts={example.expected} />
@@ -85,7 +96,7 @@ export default function CodeExample({ example, onOpen }) {
                     for a screen reader moving between them. */}
                 <button type="button" className="primary" aria-describedby={titleId}
                     onClick={(event) => onOpen(example, event.currentTarget)}>
-                    Open in Visualizer <Icon name="open" />
+                    Open in Visualizer
                 </button>
                 <button type="button" aria-describedby={titleId} onClick={copy}>
                     <Icon name={copyState === "copied" ? "check" : "copy"} />
@@ -96,7 +107,6 @@ export default function CodeExample({ example, onOpen }) {
                     {copyState === "failed" && "Copy was blocked. Select the code and copy it instead."}
                 </span>
             </div>
-            <p className="example-note">Opens the code without running it. Select Load, then Next or Run.</p>
         </article>
     );
 }

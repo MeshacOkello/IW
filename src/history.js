@@ -48,3 +48,31 @@ export function inputPrompt(history, pending) {
     // Limit prompt detection to the final line with a conventional prompt ending.
     return /[:?>]$/.test(line) ? line : 'Input';
 }
+
+// Cache one immutable activity timeline per trace, rather than rescanning its
+// prefix on every playback step. Continuation produces a new trace object.
+const registerActivity = new WeakMap();
+
+export function touchedRegistersAt(history, step) {
+    if (!history) return new Set();
+    let timeline = registerActivity.get(history);
+    if (!timeline) {
+        let touched = new Set();
+        timeline = [touched];
+        for (let index = 1; index < history.register_states.length; index++) {
+            const written = new Set(history.register_writes?.[index] ?? []);
+            // Numerical changes also establish writes in older traces.
+            for (let register = 0; register < 31; register++) {
+                if (history.register_states[index][register] !== history.register_states[index - 1][register]) {
+                    written.add(register);
+                }
+            }
+            if ([...written].some(register => !touched.has(register))) {
+                touched = new Set([...touched, ...written]);
+            }
+            timeline.push(touched);
+        }
+        registerActivity.set(history, timeline);
+    }
+    return timeline[step];
+}
