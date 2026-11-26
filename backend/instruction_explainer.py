@@ -804,6 +804,19 @@ def explain_heap_call(call, argument, result, numbers):
         return explain_isspace(argument, result, numbers)
     if call in ('printf', 'puts', 'putchar'):
         return f"{call} writes to stdout and returns {numbers.data(result)} in w0."
+    if call == 'calloc':
+        if result == 0:
+            return "calloc could not allocate the memory. It returns NULL in x0."
+        return f"calloc allocates zero-filled memory at {numbers.address(result)} and returns the address in x0."
+    if call == 'memset':
+        return f"memset fills memory starting at {numbers.address(argument)} and returns that address in x0."
+    if call == 'exit':
+        value = argument & 0xffffffff
+        value = value - (1 << 32) if value >> 31 else value
+        return f"exit({numbers.data(value)}) ends the program with exit status {numbers.data(value)}."
+    if call != 'free':
+        # A function the program calls from the linked course code.
+        return f"{call} runs and returns with {numbers.data(result)} in x0."
     if argument == 0:
         return "free(NULL) leaves the heap unchanged."
     return f"free releases the allocation at {numbers.address(argument)}."
@@ -819,15 +832,45 @@ def explain_program_return(returned, numbers):
 
 # `returned` is the trace status's record of the first function returning, if
 # it did; that ret ends the program rather than going back to a caller.
+def explain_transfer(transfer, numbers):
+    """A step that handed control to the code calling the program's function
+    and got it back: the return, the caller's work, and the next call."""
+    function = transfer['function']
+    value = transfer['value']
+    shown = value & 0xffffffff if value < 1 << 32 else value
+    register = 'w0' if value < 1 << 32 else 'x0'
+    if transfer['kind'] == 'call':
+        if transfer['outcome'] == 'exited':
+            return f"{function} ends the program."
+        return f"{function} runs and returns."
+    text = f"{function} returns to its caller with {register} = {numbers.data(shown)}."
+    outcome = transfer['outcome']
+    if outcome == 'program':
+        following = transfer.get('next_function')
+        if following == function:
+            return text + f" The caller continues, then calls {function} again."
+        if following:
+            return text + f" The caller continues, then calls {following}."
+        return text + " The caller continues."
+    if outcome == 'returned':
+        return text + f" The caller finishes, and main returns {numbers.data(transfer['main_value'])}."
+    if outcome == 'exited':
+        return text + " The caller continues, then ends the program by calling exit."
+    return text
+
+
 def explain_trace(executed_statements, register_states, stack_states, memory_accesses, library_calls, pointer_states,
-                  returned=None):
+                  returned=None, *, transfers=None, exited=None):
     explanations = [None]
     explanation_parts = [None]
+    transfers = transfers or {}
     for i, statement in enumerate(executed_statements, start=1):
         before, after = register_states[i - 1:i + 1]
         numbers = ExplanationNumbers()
         call = library_calls.get(before[PC])
-        if call:
+        if i in transfers:
+            text = explain_transfer(transfers[i], numbers)
+        elif call:
             text = explain_heap_call(call, before[0], after[0], numbers)
         elif returned and returned['step'] == i:
             text = explain_program_return(returned, numbers)

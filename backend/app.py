@@ -144,10 +144,10 @@ def validate(data):
     return None, None
 
 
-def safe_explanations(*arguments):
+def safe_explanations(*arguments, **options):
     """Explanations are commentary: a bug in one must not discard the trace."""
     try:
-        return explain_trace(*arguments)
+        return explain_trace(*arguments, **options)
     except Exception:
         logger.exception('Explanation failed; serving the trace without explanations')
         steps = len(arguments[1])
@@ -197,6 +197,7 @@ def simulate():
             stdout_states,
             stdout,
             status,
+            transfers,
         ) = run_program(program, input_events, execution_limit)
     except InputProtocolError as error:
         # The submitted input does not match the run being continued, so the
@@ -226,6 +227,8 @@ def simulate():
         library_calls,
         pointer_states,
         status.get('returned'),
+        transfers=transfers,
+        exited=status.get('exited'),
     )
 
     response = {

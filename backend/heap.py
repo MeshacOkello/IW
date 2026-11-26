@@ -14,7 +14,7 @@ LIBRARY_SYMBOLS = {
     name: 0x410000 + index * 4
     for index, name in enumerate(
         ('malloc', 'free', 'printf', 'puts', 'putchar', 'getchar', 'fgets', 'scanf', 'labs',
-         'isspace'))
+         'isspace', 'memset', 'calloc', 'exit'))
 }
 LONG_MIN = -(1 << 63)
 
@@ -61,14 +61,22 @@ class Allocation:
     contents: bytes | None = None
     snapshot_id: int | None = None
     initialized_changed: bool = False
+    # The snapshot chunks written since the last snapshot, or None when the
+    # whole allocation has to be read again. A large allocation is then only
+    # re-read and re-chunked where a step actually stored into it.
+    dirty: set | None = None
+    chunk_ids: list | None = None
 
 
 class Heap:
-    def __init__(self):
-        self.available = [(HEAP_START, HEAP_SIZE)]
+    def __init__(self, start=HEAP_START, size=HEAP_SIZE):
+        self.start = start
+        self.size = size
+        self.end = start + size
+        self.available = [(start, size)]
         self.active = {}
         self.starts = []
-        self.freed = bytearray(HEAP_SIZE)
+        self.freed = bytearray(size)
         self.freed_starts = set()
         self.snapshots = []
         self.chunks = []
@@ -88,11 +96,27 @@ class Heap:
                 self.available[index] = (address + reserved, length - reserved)
             self.active[address] = Allocation(address, size, reserved, bytearray(size))
             insort(self.starts, address)
-            offset = address - HEAP_START
+            offset = address - self.start
             self.freed[offset:offset + reserved] = bytes(reserved)
             self.freed_starts.discard(address)
             return address
         return 0
+
+    def calloc(self, count, size, write_memory):
+        """malloc for count * size bytes, zeroed and counted as written."""
+        total = count * size
+        if total >= 1 << 64:
+            return 0
+        address = self.malloc(total)
+        if address and total:
+            write_memory(address, bytes(total))
+            self.active[address].initialized[:] = b'\x01' * total
+        return address
+
+    def mark_all_dirty(self):
+        """Memory changed without the access hooks seeing it."""
+        for allocation in self.active.values():
+            allocation.dirty = None
 
     def allocation_at(self, address):
         index = bisect_right(self.starts, address) - 1
@@ -114,7 +138,7 @@ class Heap:
 
         self.starts.pop(bisect_left(self.starts, address))
         self.freed_starts.add(address)
-        offset = address - HEAP_START
+        offset = address - self.start
         self.freed[offset:offset + allocation.size] = b'\x01' * allocation.size
 
         size = allocation.reserved
@@ -135,22 +159,26 @@ class Heap:
 
     def record_access(self, address, size, kind):
         end = address + size
-        if address >= HEAP_END or end <= HEAP_START:
+        if address >= self.end or end <= self.start:
             return
 
         allocation = self.allocation_at(address)
         if allocation and end <= allocation.address + allocation.size:
             if kind == 'write':
                 offset = address - allocation.address
+                if allocation.dirty is not None:
+                    allocation.dirty.update(range(
+                        offset // SNAPSHOT_CHUNK_SIZE,
+                        (offset + size - 1) // SNAPSHOT_CHUNK_SIZE + 1))
                 initialized = allocation.initialized
                 if 0 in initialized[offset:offset + size]:
                     initialized[offset:offset + size] = b'\x01' * size
                     allocation.initialized_changed = True
             return
 
-        offset = address - HEAP_START
+        offset = address - self.start
         problem = 'out-of-bounds heap access'
-        if allocation is None and 0 <= offset < HEAP_SIZE and self.freed[offset]:
+        if allocation is None and 0 <= offset < self.size and self.freed[offset]:
             problem = 'use-after-free'
         raise HeapError(
             f'{problem}: ', {'kind': 'data', 'value': str(size)},
@@ -161,12 +189,24 @@ class Heap:
         active_snapshots = []
         for address in self.starts:
             allocation = self.active[address]
+            if allocation.dirty is not None and not allocation.dirty and not allocation.initialized_changed:
+                active_snapshots.append(allocation.snapshot_id)
+                continue
             data = bytes(read_memory(address, allocation.size)) if allocation.size else b''
             if data != allocation.contents or allocation.initialized_changed:
                 # Reuse unchanged chunks across versions so a one-byte
                 # write does not copy a large allocation into the trace.
-                chunks = []
-                for offset in range(0, allocation.size, SNAPSHOT_CHUNK_SIZE):
+                previous = allocation.chunk_ids
+                # Every write marks its chunks dirty before it marks bytes
+                # initialized, so the dirty chunks cover both kinds of change.
+                full = previous is None or allocation.dirty is None
+                if full:
+                    offsets = range(0, allocation.size, SNAPSHOT_CHUNK_SIZE)
+                    chunks = []
+                else:
+                    offsets = sorted(index * SNAPSHOT_CHUNK_SIZE for index in allocation.dirty)
+                    chunks = list(previous)
+                for offset in offsets:
                     end = offset + SNAPSHOT_CHUNK_SIZE
                     block = data[offset:end]
                     initialized = bytes(allocation.initialized[offset:end])
@@ -175,12 +215,21 @@ class Heap:
                     if chunk_id is None:
                         chunk_id = len(self.chunks)
                         self.chunk_ids[key] = chunk_id
-                        contents = ''.join(f'{byte:02x}' if known else '??' for byte, known in zip(block, initialized))
+                        if 0 in initialized:
+                            contents = ''.join(f'{byte:02x}' if known else '??'
+                                               for byte, known in zip(block, initialized))
+                        else:
+                            contents = block.hex()
                         self.chunks.append(contents)
-                    chunks.append(chunk_id)
+                    if full:
+                        chunks.append(chunk_id)
+                    else:
+                        chunks[offset // SNAPSHOT_CHUNK_SIZE] = chunk_id
                 allocation.contents = data
+                allocation.chunk_ids = chunks
                 allocation.initialized_changed = False
                 allocation.snapshot_id = len(self.snapshots)
                 self.snapshots.append({'address': address, 'size': allocation.size, 'chunks': chunks})
+            allocation.dirty = set()
             active_snapshots.append(allocation.snapshot_id)
         return active_snapshots

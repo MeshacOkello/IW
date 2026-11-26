@@ -896,6 +896,16 @@ textarea:focus-visible {
   color: var(--text-h);
 }
 
+.heap-contents-scroll {
+  display: block;
+  max-height: 320px;
+  overflow: auto;
+}
+
+.heap-contents-scroll .memory-cell {
+  flex: 1;
+}
+
 .heap-cell-address {
   flex-shrink: 0;
 }

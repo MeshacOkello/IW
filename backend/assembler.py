@@ -1,5 +1,7 @@
 """Assemble a sectioned ARM64 program with Keystone."""
+import ast
 import difflib
+import operator
 import re
 from dataclasses import dataclass, replace
 
@@ -9,6 +11,7 @@ from errors import (
     ASSEMBLY, UNSUPPORTED, describe_keystone_error, instruction_failure,
 )
 from heap import LIBRARY_SYMBOLS
+from linker import exported_functions
 from instruction_parser import parse_number
 
 PAGE_SIZE = 0x1000
@@ -229,14 +232,62 @@ def source_statements(source):
             yield Statement(line, tuple(labels), text)
 
 
+# "name .req register" names a register, as COS 217 asks for in code that
+# keeps variables in callee-saved registers; ".unreq name" drops the name.
+# Keystone has no register aliases, so the assembler writes the register in.
+REGISTER_ALIAS = re.compile(rf'^({NAME})\s+\.req\s+({NAME})$', re.ASCII | re.IGNORECASE)
+REGISTER_NAME = re.compile(r'^(?:[xw](?:[12]?\d|30)|sp|wsp|xzr|wzr|fp|lr|[vqdshb](?:[12]?\d|3[01]))$',
+                           re.IGNORECASE)
+
+
+def define_alias(statement, aliases):
+    match = REGISTER_ALIAS.match(statement.text)
+    name, register = match[1], aliases.get(match[2], match[2])
+    if not REGISTER_NAME.match(register):
+        raise AssemblyError(
+            f'"{match[2]}" is not a register, so "{name}" cannot name it.', line=statement.line,
+            suggestion=f'Write the register, as in "{name} .req x19".')
+    if REGISTER_NAME.match(name):
+        raise AssemblyError(f'"{name}" is already a register name.', line=statement.line,
+                            suggestion='Choose a name that is not a register, such as "lIndex".')
+    aliases[name] = register.lower()
+
+
+def with_aliases(statement, aliases):
+    """The statement with each register alias in its operands replaced."""
+    parts = statement.text.split(None, 1)
+    if not aliases or len(parts) != 2:
+        return statement
+    operands = IDENTIFIER.sub(lambda match: aliases.get(match[0], match[0]), parts[1])
+    if operands == parts[1]:
+        return statement
+    return replace(statement, text=f'{parts[0]} {operands}')
+
+
 def split_sections(source):
     check_literals(source)
     sections = {name: [] for name in SECTION_NAMES}
     constants = {name: [] for name in SECTION_NAMES}
     owners = {}
+    aliases = {}
     section = '.text'
     reserved = 0
     for statement in source_statements(source):
+        if REGISTER_ALIAS.match(statement.text):
+            define_alias(statement, aliases)
+            if statement.labels:
+                statement = Statement(statement.line, statement.labels, '')
+            else:
+                continue
+        elif statement.text.split(None, 1)[:1] == ['.unreq'] or statement.text.lower().startswith('.unreq '):
+            name = statement.text.split(None, 1)[1].strip() if len(statement.text.split()) > 1 else ''
+            if name not in aliases:
+                raise AssemblyError(f'"{name}" is not a register alias.', line=statement.line,
+                                    suggestion='".unreq" takes a name defined earlier with ".req".')
+            del aliases[name]
+            continue
+        elif statement.is_instruction:
+            statement = with_aliases(statement, aliases)
         parts = statement.text.split(None, 1)
         directive = parts[0].lower() if parts else ''
         operands = parts[1] if len(parts) == 2 else ''
@@ -528,7 +579,8 @@ def encode_address_instruction(assembler, statement, pc, target):
     return encoded
 
 
-def assemble_section(assembler, name, address, statements, constants, externals, marker_prefix):
+def assemble_section(assembler, name, address, statements, constants, externals, marker_prefix,
+                     known_constants=None):
     if not statements:
         return b'', {}, {}, ()
     external_lines = definitions(externals)
@@ -574,6 +626,7 @@ def assemble_section(assembler, name, address, statements, constants, externals,
             text = LOW12.sub('#0', text)
         else:
             expression = None
+            text = with_constant_values(text, known_constants)
         lines.append(start + ':')
         if expression is not None:
             expression_marker = f'{start}_target'
@@ -647,6 +700,87 @@ def assemble_section(assembler, name, address, statements, constants, externals,
     )
 
 
+# Instructions whose immediate GNU as encodes as "#imm, lsl #12" when it is a
+# multiple of 4096. Keystone does that for a number but not for a .equ name,
+# so "cmp x0, MAX_DIGITS" with MAX_DIGITS = 32768 assembles on armlab and
+# failed here. These get the constant's value written in for Keystone.
+SHIFTED_IMMEDIATE = {'add', 'adds', 'sub', 'subs', 'cmp', 'cmn'}
+CONSTANT_OPERATORS = {
+    ast.Add: operator.add, ast.Sub: operator.sub, ast.Mult: operator.mul,
+    ast.FloorDiv: operator.floordiv, ast.Div: operator.floordiv, ast.Mod: operator.mod,
+    ast.LShift: operator.lshift, ast.RShift: operator.rshift,
+    ast.BitAnd: operator.and_, ast.BitOr: operator.or_, ast.BitXor: operator.xor,
+}
+
+
+def evaluate_constant(expression, values):
+    """The integer value of a simple .equ expression, or None."""
+    try:
+        tree = ast.parse(expression.strip().lstrip('#'), mode='eval').body
+    except (SyntaxError, ValueError):
+        return None
+
+    def value(node):
+        if isinstance(node, ast.Constant) and type(node.value) is int:
+            return node.value
+        if isinstance(node, ast.Name) and node.id in values:
+            return values[node.id]
+        if isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.USub, ast.UAdd, ast.Invert)):
+            operand = value(node.operand)
+            return {ast.USub: operator.neg, ast.UAdd: operator.pos,
+                    ast.Invert: operator.invert}[type(node.op)](operand)
+        if isinstance(node, ast.BinOp) and type(node.op) in CONSTANT_OPERATORS:
+            left, right = value(node.left), value(node.right)
+            # Bound every step, so a line such as ".equ A, 1 << 10000000000"
+            # cannot make Python build an enormous integer.
+            if isinstance(node.op, (ast.LShift, ast.RShift)) and not 0 <= right < 128:
+                raise ValueError
+            result = CONSTANT_OPERATORS[type(node.op)](left, right)
+            if abs(result) >= 1 << 128:
+                raise ValueError
+            return result
+        raise ValueError
+
+    try:
+        result = value(tree)
+    except (ValueError, ZeroDivisionError, OverflowError):
+        return None
+    return result if -(1 << 63) <= result < 1 << 64 else None
+
+
+def immediate_constants(constants):
+    """Constants with one definition whose value is a plain integer expression."""
+    statements = sorted((statement for group in constants.values() for statement in group),
+                        key=lambda statement: statement.line)
+    values, counts = {}, {}
+    for statement in statements:
+        parts = statement.text.split(None, 1)
+        if len(parts) != 2 or ',' not in parts[1]:
+            continue
+        name, expression = (part.strip() for part in parts[1].split(',', 1))
+        counts[name] = counts.get(name, 0) + 1
+        result = evaluate_constant(expression, values)
+        if result is not None:
+            values[name] = result
+    return {name: value for name, value in values.items() if counts[name] == 1}
+
+
+def constant_text(value):
+    # Keystone rejects a parenthesised immediate without "#", so a plain
+    # number is written; only a negative one needs the parentheses.
+    return str(value) if value >= 0 else f'({value})'
+
+
+def with_constant_values(text, values):
+    """An add/sub/cmp/cmn line with its named constants written as numbers."""
+    parts = text.split(None, 1)
+    if not values or len(parts) != 2 or parts[0].lower() not in SHIFTED_IMMEDIATE:
+        return text
+    operands = IDENTIFIER.sub(
+        lambda match: constant_text(values[match[0]]) if match[0] in values else match[0], parts[1])
+    return f'{parts[0]} {operands}'
+
+
 def signed64(value):
     return value - (1 << 64) if value >= 1 << 63 else value
 
@@ -659,8 +793,10 @@ def assemble_program(source):
         for group in constants.values() for statement in group
         if len(statement.text.split(None, 1)) == 2
     }
+    # Library functions, then the bundled course functions (BigInt_new and
+    # the rest), resolve only names the program leaves undefined.
     library_symbols = {
-        name: address for name, address in LIBRARY_SYMBOLS.items()
+        name: address for name, address in (exported_functions() | LIBRARY_SYMBOLS).items()
         if name not in owners and name not in constant_names
     }
     marker_prefix = '__simulator_location_'
@@ -686,6 +822,7 @@ def assemble_program(source):
 
     code, labels, instructions, _ = assemble_section(
         assembler, '.text', TEXT_START, sections['.text'], external_constants['.text'], library_symbols | symbols, marker_prefix,
+        immediate_constants(constants),
     )
     if TEXT_START + len(code) > STACK_START:
         raise AssemblyError(

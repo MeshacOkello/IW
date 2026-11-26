@@ -12,6 +12,7 @@ export const NZCV = 33;
 const FLAGS = ["N", "Z", "C", "V"];
 const LIBRARY_FUNCTIONS = new Set([
     "malloc", "free", "printf", "puts", "putchar", "getchar", "fgets", "scanf", "labs", "isspace",
+    "memset", "calloc", "exit",
 ]);
 const CONDITIONS = "eq|ne|lt|le|gt|ge|lo|ls|hi|hs|cc|cs|mi|pl|vs|vc|al|nv";
 const CONDITIONAL_BRANCH = new RegExp(`^b\\.?(?:${CONDITIONS})$`);

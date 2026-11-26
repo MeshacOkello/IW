@@ -1,7 +1,7 @@
 """Limited LP64/AAPCS64 stdio simulation over Unicorn memory and byte streams."""
 import re
 
-from heap import HEAP_END, HEAP_START, HeapError
+from heap import HeapError
 
 MAX_IO_BYTES = 1 << 16
 MAX_STREAM_BYTES = 1 << 20
@@ -40,7 +40,7 @@ class LibraryMemory:
             raise LibraryError(f'invalid {size}-byte {kind} at ', pointer)
         if kind == 'write' and not region[2]:
             raise LibraryError('write into read-only memory at ', pointer)
-        if address < HEAP_END and address + size > HEAP_START:
+        if address < self.heap.end and address + size > self.heap.start:
             # Validate before writing without marking any bytes initialized.
             self.heap.record_access(address, size, 'read')
 

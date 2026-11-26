@@ -527,7 +527,9 @@ export default function AssemblyVisualizer({ ref, active = true, formats }) {
                         {openedExample && !history && <p>Opened “{openedExample}”. Select Load to run it.</p>}
                         {sourceChanged && <p>Source edited. Load to start a new run.</p>}
                         {!sourceChanged && atEnd && history.status.state === 'completed' && (
-                            <p>Execution complete.{history.status.returned && <> {history.status.returned.function} returned {history.status.returned.value}.</>}</p>
+                            <p>Execution complete.{history.status.exited
+                                ? <> The program exited with status {history.status.exited.status}.</>
+                                : history.status.returned && <> {history.status.returned.function} returned {history.status.returned.value}.</>}</p>
                         )}
                         {!sourceChanged && atEnd && history.status.state === 'execution_limit' && <p>Execution stopped at the instruction limit.</p>}
                         {!sourceChanged && atEnd && history.status.state === 'error' && (

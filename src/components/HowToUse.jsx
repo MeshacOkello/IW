@@ -204,9 +204,10 @@ export default function HowToUse({ section, hasUnsavedCode, onOpenExample }) {
                         <ReferenceTable headings={["Feature", "Support"]} rows={[
                             ["Sections", <><code>.text</code>, <code>.data</code>, <code>.bss</code>, and <code>.rodata</code>, alone or with <code>.section</code>.</>],
                             ["Constants", <><code>.equ</code> and <code>.set</code>, defined before use, with or without <code>#</code> on operands.</>],
+                            ["Register names", <><code>name .req x19</code> names a register from that line on; <code>.unreq name</code> drops the name.</>],
                             ["Data directives", <><code>.string</code>, <code>.asciz</code>, <code>.ascii</code>, <code>.byte</code>, <code>.word</code>, <code>.quad</code>, <code>.skip</code>, and <code>.align</code>.</>],
                             ["Metadata", <><code>.global</code>, <code>.type</code>, and <code>.size</code> are accepted without affecting execution.</>],
-                            ["Library calls", <><code>printf</code>, <code>puts</code>, <code>putchar</code>, <code>getchar</code>, <code>fgets</code>, <code>scanf</code>, <code>malloc</code>, <code>free</code>, <code>labs</code>, and <code>isspace</code>, called with <code>bl</code>. A source-defined function with the same name takes precedence.</>],
+                            ["Library calls", <><code>printf</code>, <code>puts</code>, <code>putchar</code>, <code>getchar</code>, <code>fgets</code>, <code>scanf</code>, <code>malloc</code>, <code>calloc</code>, <code>free</code>, <code>memset</code>, <code>labs</code>, <code>isspace</code>, and <code>exit</code>, called with <code>bl</code>. A source-defined function with the same name takes precedence.</>],
                             ["Limits", "10,000 instructions per run, 4 KiB of stack, 16 KiB of heap, and 256 nested calls. Input and output each have a 1 MiB limit."],
                             ["Unavailable", "Macros, other sections, file I/O, and instructions that expand into multiple machine instructions. Instructions outside the explained subset may execute without an explanation."],
                         ]} />
